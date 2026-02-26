@@ -24,7 +24,7 @@
 - [x] Cadence run events allongée (>= 2 min) entre changements jour/nuit.
 - [x] Éclairage nuit ajusté en bandes latérales progressives (sans halo localisé) jusqu'à la route, teinte jaune translucide.
 - [x] Lecture radio on-road stabilisée (démarrage unique sur première interaction).
-- [x] Playlist radio on-road enrichie avec `Onroad 4` (`Sound_music_onroad_song_fellas_sample_v01.mp3.mp3`).
+- [x] Playlist radio on-road enrichie avec `Onroad 4` (`Sound_music_onroad_song_fellas_sample_v01.mp3`).
 - [x] Validation gameplay manuelle approfondie sur appareils réels (fairness/ressenti) (validée par toi).
 
 ---

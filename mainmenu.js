@@ -144,12 +144,18 @@ function renderMenuBroadcast() {
   menuMessageBox.textContent = configured || MENU_BROADCAST_TEXT;
 }
 
+function formatWalletPopupValue(value) {
+  if (!Number.isFinite(value)) return "0";
+  if (value >= 9999) return "9,999+";
+  return Math.max(0, Math.floor(value)).toLocaleString("fr-FR");
+}
+
 function renderWallet() {
   const credits = getWalletCredits();
   const emeralds = getWalletEmeralds();
   if (walletAmount) walletAmount.textContent = `Crédits: ${credits}`;
-  if (walletCreditsValue) walletCreditsValue.textContent = `${credits.toLocaleString("fr-FR")}`;
-  if (walletEmeraldValue) walletEmeraldValue.textContent = `${emeralds.toLocaleString("fr-FR")}`;
+  if (walletCreditsValue) walletCreditsValue.textContent = formatWalletPopupValue(credits);
+  if (walletEmeraldValue) walletEmeraldValue.textContent = formatWalletPopupValue(emeralds);
 }
 
 function saveProfileFromForm() {
