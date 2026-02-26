@@ -35,3 +35,11 @@
 - [ ] Wallet popup conforme au mockup de structure (positionnement des modules/actions).
 - [ ] Popup quêtes journalières compréhensible et visuellement cohérent.
 - [ ] Aucun bug P0/P1 introduit sur navigation menu.
+
+
+## 4) Itération 2 — alignement mockup + correctif audio play
+
+- [x] Ajustement du layout du wallet popup (taille, marges modules, lisibilité des valeurs, position des actions) pour se rapprocher du mockup.
+- [x] Correctif audio Play: piste `OnRoad 4` corrigée (`.mp3`), suppression du faux chemin `.mp3.mp3`.
+- [x] Correctif persistance radio Play: la piste choisie est relue au chargement et rejouée automatiquement dès que l’autoplay est autorisé, avec fallback sur première interaction utilisateur.
+- [ ] Validation physique Android (à faire): vérifier le démarrage de la piste sélectionnée au lancement de run, puis après fermeture/réouverture de l’app.
