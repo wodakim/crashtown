@@ -124,6 +124,38 @@ body {
   color: #fff;
 }
 
+
+.radio-controls {
+  position: absolute;
+  z-index: 4;
+  top: calc(11.2% + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+}
+
+.radio-mini-btn {
+  min-width: 40px;
+  min-height: 34px;
+  border: 2px solid #1b2530;
+  border-radius: 8px;
+  background: rgba(40, 62, 82, 0.92);
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.radio-mini-btn.active {
+  background: #ff9f1f;
+}
+
+.radio-mini-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .top-controls {
   position: absolute;
   z-index: 4;

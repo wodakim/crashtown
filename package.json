@@ -4,7 +4,8 @@
   "private": true,
   "description": "Mirror fidèle du jeu web Crashtown (HTML/CSS/JS/Assets)",
   "scripts": {
-    "serve": "python3 -m http.server 5173"
+    "serve": "python3 -m http.server 5173",
+    "radio:scan": "node scripts/generate-radio-playlists.mjs"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

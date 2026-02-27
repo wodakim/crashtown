@@ -82,6 +82,9 @@ const takedownSound = document.getElementById("takedownSound");
 const playApp = document.querySelector(".play-app");
 const radioPlayer = document.getElementById("radioPlayer");
 const radioSelect = document.getElementById("radioSelect");
+const prevTrackBtn = document.getElementById("prevTrackBtn");
+const loopTrackBtn = document.getElementById("loopTrackBtn");
+const nextTrackBtn = document.getElementById("nextTrackBtn");
 
 const vehicleAssets = {
   PORSHE: {
@@ -182,6 +185,11 @@ const state = {
   },
   currentRadioStation: null,
   currentRadioTrack: null,
+  radioTracks: [],
+  radioQueue: [],
+  radioHistory: [],
+  radioHistoryIndex: -1,
+  radioLoopCurrent: false,
 };
 
 const feedbackLayer = document.createElement("div");
@@ -231,15 +239,77 @@ function saveRadioStation(stationId) {
   return safe;
 }
 
-function pickNextTrack(stationId) {
-  const tracks = buildStationTracks(stationId);
-  if (!tracks.length) return null;
-  let next = tracks[Math.floor(Math.random() * tracks.length)];
-  if (tracks.length > 1 && next === state.currentRadioTrack) {
-    next = tracks[(tracks.indexOf(next) + 1) % tracks.length];
+function shuffleTracks(list) {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
   }
-  state.currentRadioTrack = next;
-  return next;
+  return copy;
+}
+
+function normalizeTrackPath(stationId, trackName) {
+  if (trackName.startsWith("http://") || trackName.startsWith("https://") || trackName.startsWith("/")) return trackName;
+  return `/Assets/Sounds/Onroad/radio/${stationId}/${trackName}`;
+}
+
+async function loadStationTracks(stationId) {
+  try {
+    const response = await fetch(`/Assets/Sounds/Onroad/radio/${stationId}/playlist.json`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`playlist ${response.status}`);
+    const payload = await response.json();
+    const tracks = Array.isArray(payload?.tracks)
+      ? payload.tracks.map((name) => normalizeTrackPath(stationId, String(name))).filter(Boolean)
+      : [];
+    if (tracks.length > 0) return tracks;
+  } catch {
+    // fallback below
+  }
+
+  return buildStationTracks(stationId);
+}
+
+function refillRadioQueue() {
+  if (!state.radioTracks.length) {
+    state.radioQueue = [];
+    return;
+  }
+  state.radioQueue = shuffleTracks(state.radioTracks);
+}
+
+function pullNextTrack() {
+  if (!state.radioQueue.length) refillRadioQueue();
+  return state.radioQueue.shift() || null;
+}
+
+function pushRadioHistory(track) {
+  if (!track) return;
+  if (state.radioHistoryIndex < state.radioHistory.length - 1) {
+    state.radioHistory = state.radioHistory.slice(0, state.radioHistoryIndex + 1);
+  }
+  state.radioHistory.push(track);
+  state.radioHistoryIndex = state.radioHistory.length - 1;
+}
+
+function updateRadioControlsUi() {
+  if (loopTrackBtn) {
+    loopTrackBtn.classList.toggle("active", state.radioLoopCurrent);
+    loopTrackBtn.setAttribute("aria-pressed", state.radioLoopCurrent ? "true" : "false");
+  }
+  if (prevTrackBtn) prevTrackBtn.disabled = state.radioHistoryIndex <= 0;
+}
+
+async function prepareRadioStation(stationId, { forceReload = false } = {}) {
+  const stationChanged = state.currentRadioStation !== stationId;
+  if (!stationChanged && !forceReload && state.radioTracks.length) return;
+
+  state.currentRadioStation = stationId;
+  state.radioTracks = await loadStationTracks(stationId);
+  refillRadioQueue();
+  state.radioHistory = [];
+  state.radioHistoryIndex = -1;
+  state.currentRadioTrack = null;
+  updateRadioControlsUi();
 }
 
 function migrateLegacyStorageKeys() {
@@ -1064,28 +1134,42 @@ function mainLoop(now) {
 }
 
 
-async function ensureRadioPlayback({ start = true, forceNext = false } = {}) {
+async function ensureRadioPlayback({ start = true, forceNext = false, usePrevious = false } = {}) {
   if (!radioPlayer) return false;
 
   const stationFromUi = typeof radioSelect?.value === "string" ? radioSelect.value : getSavedRadioStation();
   const stationId = saveRadioStation(stationFromUi);
   if (radioSelect && radioSelect.value !== stationId) radioSelect.value = stationId;
 
-  const stationChanged = state.currentRadioStation !== stationId;
-  state.currentRadioStation = stationId;
+  await prepareRadioStation(stationId, { forceReload: forceNext && stationId === state.currentRadioStation });
 
-  if (stationChanged || forceNext || !radioPlayer.src) {
-    const nextTrack = pickNextTrack(stationId);
-    if (nextTrack) {
-      radioPlayer.src = nextTrack;
+  let targetTrack = null;
+
+  if (usePrevious) {
+    if (state.radioHistoryIndex > 0) {
+      state.radioHistoryIndex -= 1;
+      targetTrack = state.radioHistory[state.radioHistoryIndex] || null;
     }
+  } else if (state.radioLoopCurrent && state.currentRadioTrack && !forceNext) {
+    targetTrack = state.currentRadioTrack;
+  } else if (!forceNext && state.radioHistoryIndex >= 0 && state.radioHistoryIndex < state.radioHistory.length - 1) {
+    state.radioHistoryIndex += 1;
+    targetTrack = state.radioHistory[state.radioHistoryIndex] || null;
   }
 
+  if (!targetTrack) {
+    targetTrack = pullNextTrack();
+    if (!targetTrack) return false;
+    pushRadioHistory(targetTrack);
+  }
+
+  state.currentRadioTrack = targetTrack;
+  radioPlayer.src = targetTrack;
   radioPlayer.loop = false;
   radioPlayer.volume = 0.62;
+  updateRadioControlsUi();
 
   if (!start) return false;
-  if (!radioPlayer.paused && !stationChanged && !forceNext) return true;
   return safePlay(radioPlayer);
 }
 
@@ -1270,15 +1354,29 @@ function bindControls() {
     navigateAway("index.html");
   });
 
-  radioSelect?.addEventListener("change", () => {
+  radioSelect?.addEventListener("change", async () => {
     saveRadioStation(radioSelect.value);
-    state.currentRadioTrack = null;
+    await prepareRadioStation(radioSelect.value, { forceReload: true });
     ensureRadioPlayback({ start: true, forceNext: true });
   });
 
-  radioPlayer?.addEventListener("ended", () => {
+  prevTrackBtn?.addEventListener("click", () => {
+    ensureRadioPlayback({ start: true, usePrevious: true });
+  });
+
+  nextTrackBtn?.addEventListener("click", () => {
     ensureRadioPlayback({ start: true, forceNext: true });
   });
+
+  loopTrackBtn?.addEventListener("click", () => {
+    state.radioLoopCurrent = !state.radioLoopCurrent;
+    updateRadioControlsUi();
+  });
+
+  radioPlayer?.addEventListener("ended", () => {
+    ensureRadioPlayback({ start: true, forceNext: !state.radioLoopCurrent });
+  });
+
   bindRadioUnlockOnFirstInteraction();
 
   document.addEventListener("visibilitychange", () => {
@@ -1293,6 +1391,7 @@ function init() {
   migrateLegacyStorageKeys();
   playerCar.src = selectedVehicleSrc();
   if (radioSelect) radioSelect.value = getSavedRadioStation();
+  updateRadioControlsUi();
   state.playerLanePosition = state.lane;
   placePlayer(false);
   if (!isFeatureEnabled("tutorialEnabled")) state.tutorialSeen = true;
