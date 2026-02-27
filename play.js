@@ -3,6 +3,8 @@ import { isFeatureEnabled } from "./src/core/featureFlags.js";
 import { ensureStorageVersion, readNumber, writeNumber } from "./src/core/storage.js";
 import { trackEvent } from "./src/core/telemetry.js";
 import { gameplayConfig } from "./src/data/gameplay.js";
+import { RADIO_STATION_PREF_KEY, buildStationTracks, isKnownStation } from "./src/data/radioStations.js";
+import { VEHICLE_CATALOG, getVehicleVariant } from "./src/data/vehicles.js";
 import { safePlay, stopAndReset } from "./src/core/audio.js";
 const lanes = gameplayConfig.lanes;
 const ENEMY_SPAWN_INTERVAL_MS = gameplayConfig.enemySpawnIntervalMs;
@@ -35,7 +37,6 @@ const PLAYER_WALLET_KEY = "wallet_credits_v1";
 const GIFT_REWARD_CREDITS = gameplayConfig.gift.rewardCredits;
 const GIFT_SPAWN_MIN_MS = gameplayConfig.gift.spawnMinMs;
 const GIFT_SPAWN_MAX_MS = gameplayConfig.gift.spawnMaxMs;
-const RADIO_TRACK_PREF_KEY = "radio_track_idx_v1";
 const OBSTACLE_SPAWN_INTERVAL_MS = gameplayConfig.obstacle.spawnIntervalMs;
 const MAX_ACTIVE_OBSTACLES = gameplayConfig.obstacle.maxActive;
 const RUN_EVENT_MIN_INTERVAL_MS = gameplayConfig.runEvents.minIntervalMs;
@@ -45,6 +46,7 @@ const RUN_EVENT_DENSE_TRAFFIC_SPAWN_MULT = gameplayConfig.runEvents.denseTraffic
 const RUN_EVENT_DENSE_TRAFFIC_MAX_BONUS = gameplayConfig.runEvents.denseTrafficMaxEnemiesBonus;
 const RUN_EVENT_NIGHT_CRUISE_MULT = gameplayConfig.runEvents.nightCruiseMultiplier;
 const RUN_EVENT_NIGHT_SPEED_CAP = gameplayConfig.runEvents.nightSpeedCap;
+const RADIO_REPEAT_PREF_KEY = "ct_radio_repeat_v1";
 const OBSTACLE_ASSET_CANDIDATES = [
   "/Assets/Road/obstacles/Obstacles_decor_base_v01.svg",
   "/Assets/Road/Obstacles/Obstacles_decor_base_v01.svg",
@@ -82,33 +84,14 @@ const takedownSound = document.getElementById("takedownSound");
 const playApp = document.querySelector(".play-app");
 const radioPlayer = document.getElementById("radioPlayer");
 const radioSelect = document.getElementById("radioSelect");
+const prevTrackBtn = document.getElementById("prevTrackBtn");
+const loopTrackBtn = document.getElementById("loopTrackBtn");
+const nextTrackBtn = document.getElementById("nextTrackBtn");
 
-const vehicleAssets = {
-  PORSHE: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_porshe_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_porshe_pixel_base_v01.png",
-  },
-  BMW: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_bmw_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_bmw_pixel_base_v01.png",
-  },
-  GALLARDO: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_gallardo_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_gallardo_pixel_base_v01.png",
-  },
-  RX7: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_rx7_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_rx7_pixel_base_v01.png",
-  },
-  CHIRON: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_chiron_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_chiron_pixel_base_v01.png",
-  },
-  CAMARO: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_camaro_pixel_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_camaro_pixel_base_v01.png",
-  },
-};
+const vehicleAssets = VEHICLE_CATALOG.reduce((acc, vehicle) => {
+  acc[vehicle.id] = { ...vehicle.variants };
+  return acc;
+}, {});
 
 
 const botVehicleAssets = {
@@ -129,12 +112,7 @@ const botVehicleAssets = {
 };
 
 
-const radioTracks = [
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong1_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong2_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong3_loopX3_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_song_fellas_sample_v01.mp3.mp3",
-];
+let radioUnlockBound = false;
 
 const state = {
   running: true,
@@ -185,6 +163,14 @@ const state = {
     endsAt: 0,
     nextAt: performance.now() + RUN_EVENT_MIN_INTERVAL_MS,
   },
+  currentRadioStation: null,
+  currentRadioTrack: null,
+  radioTracks: [],
+  radioQueue: [],
+  radioHistory: [],
+  radioHistoryIndex: -1,
+  radioLoopCurrent: false,
+  radioEmptyWarnedStation: null,
 };
 
 const feedbackLayer = document.createElement("div");
@@ -195,10 +181,15 @@ const comboMeter = document.createElement("div");
 comboMeter.className = "combo-meter hidden";
 playApp?.appendChild(comboMeter);
 
+const playerShadow = document.createElement("div");
+playerShadow.className = "car-shadow player-shadow";
+carsLayer?.appendChild(playerShadow);
+
 function selectedVehicleSrc() {
-  const selected = localStorage.getItem("selectedVehicle") || "PORSHE";
+  const selected = localStorage.getItem("selectedVehicle") || "RX7";
   const quality = localStorage.getItem("selectedVehicleQuality") || "hd";
-  return vehicleAssets[selected]?.[quality] || vehicleAssets.PORSHE.hd;
+  const color = localStorage.getItem("selectedVehicleColor") || "white";
+  return getVehicleVariant(selected, quality, color) || vehicleAssets.RX7?.hd || vehicleAssets.PORSHE?.hd;
 }
 
 function playSfx(audio) {
@@ -223,15 +214,102 @@ function addWalletCredits(amount) {
   return next;
 }
 
-function getSavedRadioTrackIndex() {
-  const raw = readNumber(RADIO_TRACK_PREF_KEY, Number.NaN);
-  if (Number.isInteger(raw) && raw >= 0 && raw < radioTracks.length) return raw;
-  return 0;
+function getSavedRadioStation() {
+  const raw = localStorage.getItem(RADIO_STATION_PREF_KEY) || "radio_random";
+  return isKnownStation(raw) ? raw : "radio_random";
 }
 
-function saveRadioTrackIndex(index) {
-  const safe = Number.isInteger(index) && index >= 0 && index < radioTracks.length ? index : 0;
-  writeNumber(RADIO_TRACK_PREF_KEY, safe);
+function saveRadioStation(stationId) {
+  const safe = isKnownStation(stationId) ? stationId : "radio_random";
+  localStorage.setItem(RADIO_STATION_PREF_KEY, safe);
+  return safe;
+}
+
+
+function getSavedRadioRepeat() {
+  return localStorage.getItem(RADIO_REPEAT_PREF_KEY) === "1";
+}
+
+function saveRadioRepeat(enabled) {
+  localStorage.setItem(RADIO_REPEAT_PREF_KEY, enabled ? "1" : "0");
+}
+
+function shuffleTracks(list) {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function normalizeTrackPath(stationId, trackName) {
+  if (trackName.startsWith("http://") || trackName.startsWith("https://") || trackName.startsWith("/")) return trackName;
+  return `/Assets/Sounds/Onroad/radio/${stationId}/${trackName}`;
+}
+
+async function loadStationTracks(stationId) {
+  try {
+    const response = await fetch(`/Assets/Sounds/Onroad/radio/${stationId}/playlist.json`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`playlist ${response.status}`);
+    const payload = await response.json();
+    const tracks = Array.isArray(payload?.tracks)
+      ? payload.tracks.map((name) => normalizeTrackPath(stationId, String(name))).filter(Boolean)
+      : [];
+    if (tracks.length > 0) return tracks;
+    console.warn(`[CT RADIO] playlist vide pour ${stationId} (playlist.json)`);
+  } catch {
+    // fallback below
+  }
+
+  return buildStationTracks(stationId);
+}
+
+function refillRadioQueue() {
+  if (!state.radioTracks.length) {
+    state.radioQueue = [];
+    return;
+  }
+  state.radioQueue = shuffleTracks(state.radioTracks);
+}
+
+function pullNextTrack() {
+  if (!state.radioQueue.length) refillRadioQueue();
+  return state.radioQueue.shift() || null;
+}
+
+function pushRadioHistory(track) {
+  if (!track) return;
+  if (state.radioHistoryIndex < state.radioHistory.length - 1) {
+    state.radioHistory = state.radioHistory.slice(0, state.radioHistoryIndex + 1);
+  }
+  state.radioHistory.push(track);
+  state.radioHistoryIndex = state.radioHistory.length - 1;
+}
+
+function updateRadioControlsUi() {
+  if (loopTrackBtn) {
+    loopTrackBtn.classList.toggle("active", state.radioLoopCurrent);
+    loopTrackBtn.setAttribute("aria-pressed", state.radioLoopCurrent ? "true" : "false");
+  }
+  if (prevTrackBtn) prevTrackBtn.disabled = state.radioHistoryIndex <= 0;
+}
+
+async function prepareRadioStation(stationId, { forceReload = false } = {}) {
+  const stationChanged = state.currentRadioStation !== stationId;
+  if (!stationChanged && !forceReload && state.radioTracks.length) return;
+
+  state.currentRadioStation = stationId;
+  state.radioTracks = await loadStationTracks(stationId);
+  refillRadioQueue();
+  if (!state.radioTracks.length && state.radioEmptyWarnedStation !== stationId) {
+    state.radioEmptyWarnedStation = stationId;
+    addFloatingFeedback("RADIO: playlist vide", "neutral");
+  }
+  state.radioHistory = [];
+  state.radioHistoryIndex = -1;
+  state.currentRadioTrack = null;
+  updateRadioControlsUi();
 }
 
 function migrateLegacyStorageKeys() {
@@ -242,8 +320,8 @@ function migrateLegacyStorageKeys() {
     }
 
     const legacyRadio = Number(localStorage.getItem("ct_radio_track_idx_v1"));
-    if (Number.isInteger(legacyRadio) && legacyRadio >= 0 && legacyRadio < radioTracks.length && !Number.isFinite(readNumber(RADIO_TRACK_PREF_KEY, Number.NaN))) {
-      writeNumber(RADIO_TRACK_PREF_KEY, legacyRadio);
+    if (Number.isInteger(legacyRadio) && !localStorage.getItem(RADIO_STATION_PREF_KEY)) {
+      saveRadioStation("radio_random");
     }
   } catch {
     // no-op
@@ -335,6 +413,9 @@ function refreshComboMeter() {
   }
 
   comboMeter.classList.remove("hidden");
+  comboMeter.classList.remove("combo-pop");
+  void comboMeter.offsetWidth;
+  comboMeter.classList.add("combo-pop");
   comboMeter.textContent = `COMBO x${state.combo.multiplier.toFixed(1)} · ${state.combo.count}`;
 }
 
@@ -473,7 +554,12 @@ function syncHitboxVisibility() {
 
 function placePlayer(animated = true) {
   if (!animated) playerCar.style.transition = "none";
-  playerCar.style.left = playerLeftCss();
+  const left = playerLeftCss();
+  playerCar.style.left = left;
+  if (playerShadow) {
+    playerShadow.style.left = left;
+    playerShadow.style.top = `${(PLAYER_Y + 0.085) * 100}%`;
+  }
 }
 
 function createEnemy(prewarm = false, forcedLane = null) {
@@ -490,6 +576,8 @@ function createEnemy(prewarm = false, forcedLane = null) {
 
   const enemy = document.createElement("img");
   enemy.className = "car enemy";
+  const enemyShadow = document.createElement("div");
+  enemyShadow.className = "car-shadow enemy-shadow";
   const quality = Math.random() > 0.5 ? "hd" : "pixel";
   const pack = botVehicleAssets[quality];
   enemy.src = pack[Math.floor(Math.random() * pack.length)];
@@ -501,6 +589,8 @@ function createEnemy(prewarm = false, forcedLane = null) {
   }
   enemy.style.left = `calc(${Math.round(lanes[chosenLane] * 1000) / 10}% - 5.5%)`;
   enemy.style.top = `${startProgress * 100}%`;
+  enemyShadow.style.left = enemy.style.left;
+  enemyShadow.style.top = `${(startProgress + 0.07) * 100}%`;
 
   const model = {
     element: enemy,
@@ -517,10 +607,12 @@ function createEnemy(prewarm = false, forcedLane = null) {
     steeringDir: 0,
     laneX: lanes[chosenLane],
     nearMissChecked: false,
+    shadowEl: enemyShadow,
   };
 
   enemy.style.transform = "rotate(0deg)";
 
+  carsLayer.appendChild(enemyShadow);
   carsLayer.appendChild(enemy);
   state.enemies.push(model);
 }
@@ -528,16 +620,23 @@ function createEnemy(prewarm = false, forcedLane = null) {
 function removeEnemy(model) {
   model.alive = false;
   model.element.remove();
+  model.shadowEl?.remove();
   state.enemies = state.enemies.filter((enemy) => enemy !== model);
 }
 
 function doTakedown(model, direction = 1) {
   if (!model.alive) return;
   model.alive = false;
-  model.element.style.transition = "transform 460ms ease-out, opacity 460ms ease-out, top 460ms linear";
-  model.element.style.transform = `translateX(${direction > 0 ? 52 : -52}px) rotate(${direction > 0 ? 210 : -210}deg) scale(0.95)`;
+  const horizontal = direction > 0 ? 56 : -56;
+  model.element.style.transition = "transform 520ms cubic-bezier(0.2, 0.85, 0.2, 1), opacity 520ms ease-out, top 520ms linear";
+  model.element.style.transform = `translate(${horizontal}px, -34px) rotate(${direction > 0 ? 220 : -220}deg) scale(0.94)`;
   model.element.style.opacity = "0";
-  model.element.style.top = `${(model.progress + 0.18) * 100}%`;
+  model.element.style.top = `${(model.progress + 0.2) * 100}%`;
+  if (model.shadowEl) {
+    model.shadowEl.style.transition = "transform 520ms ease-out, opacity 520ms ease-out";
+    model.shadowEl.style.transform = `translateX(${horizontal * 0.42}px) scale(0.58)`;
+    model.shadowEl.style.opacity = "0.08";
+  }
   const takedownPoints = 750;
   award(takedownPoints);
   trackEvent("takedown", { lane: model.lane, score: state.score });
@@ -546,7 +645,7 @@ function doTakedown(model, direction = 1) {
   registerComboAction("takedown", takedownPoints, "TAKEDOWN +750", "takedown");
   flashScreen("takedown");
   playSfx(takedownSound);
-  setTimeout(() => removeEnemy(model), 470);
+  setTimeout(() => removeEnemy(model), 530);
 }
 
 function crashBotOnObstacle(model, obstacleLane) {
@@ -556,6 +655,11 @@ function crashBotOnObstacle(model, obstacleLane) {
   const direction = model.steeringDir || (Math.random() > 0.5 ? 1 : -1);
   model.element.style.transform = `translateX(${direction > 0 ? 26 : -26}px) rotate(${direction > 0 ? 132 : -132}deg) scale(0.92)`;
   model.element.style.opacity = "0";
+  if (model.shadowEl) {
+    model.shadowEl.style.transition = "transform 360ms ease-out, opacity 360ms ease-out";
+    model.shadowEl.style.transform = `translateX(${direction > 0 ? 16 : -16}px) scale(0.7)`;
+    model.shadowEl.style.opacity = "0.1";
+  }
   trackEvent("obstacle_bot_hit", { lane: obstacleLane, score: state.score });
   setTimeout(() => removeEnemy(model), 370);
 }
@@ -631,7 +735,8 @@ function handlePlayerBotBump(enemy, now) {
   const steeringTowardEnemy = Math.sign(overlap.centerDx) === state.lastLaneChangeDir;
 
   if (isSteeringWindow && steeringTowardEnemy) {
-    doTakedown(enemy, state.lastLaneChangeDir || (overlap.centerDx > 0 ? 1 : -1));
+    const knockDirection = Math.sign(overlap.centerDx) || state.lastLaneChangeDir || 1;
+    doTakedown(enemy, knockDirection);
     state.shieldUntil = now + 140;
     return;
   }
@@ -677,6 +782,12 @@ function updateEnemy(enemy, dt, now) {
   enemy.speed = Math.max(BOT_MIN_SPEED, Math.min(BOT_MAX_SPEED, playerRelativeSpeed, enemy.speed));
   enemy.progress += (state.speed / 1240 - enemy.speed) * dt;
   enemy.element.style.top = `${enemy.progress * 100}%`;
+  if (enemy.shadowEl) {
+    enemy.shadowEl.style.left = enemy.element.style.left;
+    enemy.shadowEl.style.top = `${(enemy.progress + 0.07) * 100}%`;
+    enemy.shadowEl.style.opacity = "0.28";
+    enemy.shadowEl.style.transform = "translateX(0) scale(1)";
+  }
 
   checkNearMiss(enemy);
 
@@ -1056,20 +1167,62 @@ function mainLoop(now) {
 }
 
 
-function ensureRadioPlayback({ start = true } = {}) {
-  if (!radioPlayer) return;
-  const pick = Number(radioSelect?.value ?? getSavedRadioTrackIndex());
-  saveRadioTrackIndex(pick);
-  const next = radioTracks[pick] || radioTracks[0];
-  const sameTrack = radioPlayer.src.endsWith(next);
-  if (!sameTrack) {
-    radioPlayer.src = next;
+async function ensureRadioPlayback({ start = true, forceNext = false, usePrevious = false } = {}) {
+  if (!radioPlayer) return false;
+
+  const stationFromUi = typeof radioSelect?.value === "string" ? radioSelect.value : getSavedRadioStation();
+  const stationId = saveRadioStation(stationFromUi);
+  if (radioSelect && radioSelect.value !== stationId) radioSelect.value = stationId;
+
+  await prepareRadioStation(stationId, { forceReload: false });
+
+  let targetTrack = null;
+
+  if (usePrevious) {
+    if (state.radioHistoryIndex > 0) {
+      state.radioHistoryIndex -= 1;
+      targetTrack = state.radioHistory[state.radioHistoryIndex] || null;
+    }
+  } else if (state.radioLoopCurrent && state.currentRadioTrack && !forceNext) {
+    targetTrack = state.currentRadioTrack;
+  } else if (!forceNext && state.radioHistoryIndex >= 0 && state.radioHistoryIndex < state.radioHistory.length - 1) {
+    state.radioHistoryIndex += 1;
+    targetTrack = state.radioHistory[state.radioHistoryIndex] || null;
   }
-  radioPlayer.loop = true;
+
+  if (!targetTrack) {
+    targetTrack = pullNextTrack();
+    if (!targetTrack) return false;
+    pushRadioHistory(targetTrack);
+  }
+
+  state.currentRadioTrack = targetTrack;
+  radioPlayer.src = targetTrack;
+  radioPlayer.loop = false;
   radioPlayer.volume = 0.62;
-  if (!start) return;
-  if (sameTrack && !radioPlayer.paused) return;
-  radioPlayer.play().catch(() => {});
+  updateRadioControlsUi();
+
+  if (!start) return false;
+  return safePlay(radioPlayer);
+}
+
+function bindRadioUnlockOnFirstInteraction() {
+  if (radioUnlockBound) return;
+  radioUnlockBound = true;
+
+  const unlock = async () => {
+    const started = await ensureRadioPlayback({ start: true });
+    dismissTutorialOverlay();
+    if (!started) return;
+    radioUnlockBound = false;
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("touchstart", unlock);
+  };
+
+  window.addEventListener("pointerdown", unlock, { passive: true });
+  window.addEventListener("keydown", unlock);
+  window.addEventListener("touchstart", unlock, { passive: true });
 }
 
 
@@ -1157,6 +1310,65 @@ function setupTapSwipeControls() {
   };
 }
 
+
+function clearRunEntities() {
+  state.enemies.forEach((enemy) => {
+    enemy.element.remove();
+    enemy.shadowEl?.remove();
+  });
+  state.giftDrops.forEach((gift) => gift.element.remove());
+  state.obstacles.forEach((obs) => obs.element.remove());
+  state.enemies = [];
+  state.giftDrops = [];
+  state.obstacles = [];
+}
+
+function restartRun() {
+  clearRunEntities();
+
+  state.running = true;
+  state.gameOver = false;
+  state.lane = 1;
+  state.playerLanePosition = 1;
+  state.score = 0;
+  state.speed = 280;
+  state.roadOffset = 0;
+  state.keys.left = false;
+  state.keys.right = false;
+  state.keys.accel = false;
+  state.keys.brake = false;
+  state.enemySpawnClock = 0;
+  state.obstacleSpawnClock = 0;
+  state.giftSpawnClock = 0;
+  state.giftSpawnTarget = GIFT_SPAWN_MIN_MS + Math.random() * (GIFT_SPAWN_MAX_MS - GIFT_SPAWN_MIN_MS);
+  state.laneChangeBlockedUntil = 0;
+  state.startedAt = performance.now();
+  state.shieldUntil = 0;
+  state.speedProgressBoost = 0;
+  state.combo = { count: 0, multiplier: 1, expiresAt: 0, lastSource: null };
+  state.runEvent = { type: null, endsAt: 0, nextAt: performance.now() + RUN_EVENT_MIN_INTERVAL_MS };
+  state.currentModal = null;
+
+  breakCombo("retry");
+  setModal(null);
+  overlay.classList.add("hidden");
+  gameOverPanel.classList.add("hidden");
+  pausePopup.classList.add("hidden");
+  settingsPopup.classList.add("hidden");
+  confirmExitPopup.classList.add("hidden");
+
+  placePlayer(false);
+  scoreValue.textContent = String(state.score).padStart(10, "0");
+  speedValue.textContent = String(Math.floor(state.speed)).padStart(4, "0");
+
+  for (let i = 0; i < 3; i += 1) {
+    createEnemy(true);
+  }
+
+  state.lastFrame = performance.now();
+  trackEvent("play_retry", { station: state.currentRadioStation || getSavedRadioStation() });
+}
+
 function bindControls() {
   const onKey = (pressed) => (event) => {
     const key = event.key.toLowerCase();
@@ -1229,23 +1441,35 @@ function bindControls() {
   menuBtnInPause?.addEventListener("click", () => {
     navigateAway("index.html");
   });
-  retryBtn.addEventListener("click", () => window.location.reload());
+  retryBtn.addEventListener("click", () => restartRun());
   menuBtnGameOver.addEventListener("click", () => {
     navigateAway("index.html");
   });
 
-  radioSelect?.addEventListener("change", () => {
-    saveRadioTrackIndex(Number(radioSelect.value));
-    ensureRadioPlayback();
+  radioSelect?.addEventListener("change", async () => {
+    saveRadioStation(radioSelect.value);
+    await prepareRadioStation(radioSelect.value, { forceReload: true });
+    ensureRadioPlayback({ start: true, forceNext: true });
   });
-  const onFirstInteraction = () => {
-    ensureRadioPlayback({ start: true });
-    dismissTutorialOverlay();
-    window.removeEventListener("pointerdown", onFirstInteraction);
-    window.removeEventListener("keydown", onFirstInteraction);
-  };
-  window.addEventListener("pointerdown", onFirstInteraction, { once: true });
-  window.addEventListener("keydown", onFirstInteraction, { once: true });
+
+  prevTrackBtn?.addEventListener("click", () => {
+    ensureRadioPlayback({ start: true, usePrevious: true });
+  });
+
+  nextTrackBtn?.addEventListener("click", () => {
+    ensureRadioPlayback({ start: true, forceNext: true });
+  });
+
+  loopTrackBtn?.addEventListener("click", () => {
+    state.radioLoopCurrent = !state.radioLoopCurrent;
+    saveRadioRepeat(state.radioLoopCurrent);
+    updateRadioControlsUi();
+  });
+
+  radioPlayer?.addEventListener("ended", () => {
+    ensureRadioPlayback({ start: true, forceNext: !state.radioLoopCurrent });
+  });
+
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onAppBackground();
@@ -1258,12 +1482,16 @@ function init() {
   ensureStorageVersion(2);
   migrateLegacyStorageKeys();
   playerCar.src = selectedVehicleSrc();
-  if (radioSelect) radioSelect.value = String(getSavedRadioTrackIndex());
+  if (radioSelect) radioSelect.value = getSavedRadioStation();
+  state.radioLoopCurrent = getSavedRadioRepeat();
+  updateRadioControlsUi();
   state.playerLanePosition = state.lane;
   placePlayer(false);
   if (!isFeatureEnabled("tutorialEnabled")) state.tutorialSeen = true;
   bindControls();
-  ensureRadioPlayback({ start: false });
+  ensureRadioPlayback({ start: true }).then((started) => {
+    if (!started) bindRadioUnlockOnFirstInteraction();
+  });
 
   for (let i = 0; i < 3; i += 1) {
     createEnemy(true);

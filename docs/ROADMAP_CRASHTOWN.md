@@ -120,6 +120,16 @@ Pour les sujets sensibles (moteur, rendu, persistance, architecture), la décisi
 - Web Audio API pragmatique: variations pitch/volume UI.
 - Moteur dynamique: boucles idle/mid/high + playbackRate + crossfade.
 
+### D4. Animations boutons (global jeu)
+- Standardiser les états `idle/hover/press/release/disabled` sur tous les boutons (menu, garage, play, popups).
+- Ajouter micro-feedback press (<100ms) + rebond léger cohérent DA sur tout le jeu.
+- Garantir des hitboxes tactiles stables pendant l’animation (pas de mauvais tap).
+
+### D5. Vraies animations mode jeu (runtime)
+- Passer des feedbacks statiques à des animations gameplay visibles: near-miss, takedown, crash, combo, pickup.
+- Introduire timeline d’animation en course (entrée/sortie, intensité selon vitesse, enchaînement non bloquant).
+- Ajouter un budget perf animation (60 FPS cible Android mid-tier, fallback simplifié si charge trop élevée).
+
 **Sortie attendue**: sensation premium perceptible sans dette technique excessive.
 
 ---
@@ -175,5 +185,7 @@ Tu m'as demandé de choisir au bon moment ce qui est le mieux pour une app mobil
 9. ✅ intro une fois/session + loading inter-pages adouci 📱,
 10. 🔜 rapport avant/après 📱.
 11. ✅ correctif retry audio: conserver la piste sélectionnée. 📱
+12. 🟡 pack animations boutons globales (menu/garage/play/popups) avec states unifiés + feedback press (première passe livrée, tuning en cours).
+13. 🔜 première passe des vraies animations gameplay en run (near-miss/takedown/crash/combo/pickup) sous budget perf Android.
 
 C'est le meilleur point de départ pour avancer vite **et** protéger ton jeu.

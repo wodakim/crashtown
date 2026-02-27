@@ -1,5 +1,8 @@
 import { initPagePerf, markNavigationStart, reportNavigationArrival, runExitTransition } from "./perf-tools.js";
 import { navigateWithPreload as sharedNavigateWithPreload, preloadAsset } from "./src/core/navigation.js";
+import { RADIO_STATION_PREF_KEY, RADIO_STATIONS, isKnownStation } from "./src/data/radioStations.js";
+import { COLOR_TOKEN_ORDER, VEHICLE_CATALOG, getVehicleCard, listVehiclesForQuality } from "./src/data/vehicles.js";
+import { isVehicleColorOwned, isVehicleOwned, unlockVehicle, unlockVehicleColor } from "./src/data/vehicleOwnership.js";
 const overlay = document.getElementById("overlay");
 const popups = {
   settingsPopup: document.getElementById("settingsPopup"),
@@ -27,24 +30,11 @@ const music = document.getElementById("mainMenuMusic");
 let introAudioUnlocked = false;
 const volumeSlider = document.getElementById("volumeSlider");
 const qualityButtons = Array.from(document.querySelectorAll(".toggle"));
+const radioStationSelect = document.getElementById("radioStationSelect");
 
 const cars = {
-  hd: [
-    ["PORSHE HD", "/Assets/Vehicles/Player/HD/Vehicles_porshe_HD_base_v01.png"],
-    ["BMW HD", "/Assets/Vehicles/Player/HD/Vehicles_bmw_HD_base_v01.png"],
-    ["GALLARDO HD", "/Assets/Vehicles/Player/HD/Vehicles_gallardo_HD_base_v01.png"],
-    ["RX7 HD", "/Assets/Vehicles/Player/HD/Vehicles_rx7_HD_base_v01.png"],
-    ["CHIRON HD", "/Assets/Vehicles/Player/HD/Vehicles_chiron_HD_base_v01.png"],
-    ["CAMARO HD", "/Assets/Vehicles/Player/HD/Vehicles_camaro_pixel_base_v01.png"],
-  ],
-  pixel: [
-    ["PORSHE PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_porshe_pixel_base_v01.png"],
-    ["BMW PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_bmw_pixel_base_v01.png"],
-    ["GALLARDO PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_gallardo_pixel_base_v01.png"],
-    ["RX7 PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_rx7_pixel_base_v01.png"],
-    ["CHIRON PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_chiron_pixel_base_v01.png"],
-    ["CAMARO PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_camaro_pixel_base_v01.png"],
-  ],
+  hd: listVehiclesForQuality("hd"),
+  pixel: listVehiclesForQuality("pixel"),
 };
 
 const INTRO_VIDEO_SRC = "/Assets/Video/Intro.mp4";
@@ -75,7 +65,13 @@ const preloadAssets = [
 let selectedQuality = localStorage.getItem("selectedVehicleQuality") || "hd";
 let carIndex = 0;
 const variantOrder = ["hd", "pixel"];
+let selectedShopColor = localStorage.getItem("selectedVehicleColor") || "white";
 const shopVariantLabel = document.getElementById("shopVariantLabel");
+const shopColorSelect = document.getElementById("shopColorSelect");
+const shopCarPrice = document.getElementById("shopCarPrice");
+const shopColorPrice = document.getElementById("shopColorPrice");
+const shopTotalPrice = document.getElementById("shopTotalPrice");
+const equipFromShopBtn = document.getElementById("equipFromShopBtn");
 const profileNicknameInput = document.getElementById("profileNickname");
 const profileLevel = document.getElementById("profileLevel");
 const profileRank = document.getElementById("profileRank");
@@ -144,12 +140,36 @@ function renderMenuBroadcast() {
   menuMessageBox.textContent = configured || MENU_BROADCAST_TEXT;
 }
 
+function formatWalletPopupValue(value) {
+  if (!Number.isFinite(value)) return "0";
+  if (value >= 9999) return "9,999+";
+  return Math.max(0, Math.floor(value)).toLocaleString("fr-FR");
+}
+
+
+function getSelectedRadioStation() {
+  const saved = localStorage.getItem(RADIO_STATION_PREF_KEY) || "radio_random";
+  return isKnownStation(saved) ? saved : "radio_random";
+}
+
+function saveSelectedRadioStation(stationId) {
+  const safe = isKnownStation(stationId) ? stationId : "radio_random";
+  localStorage.setItem(RADIO_STATION_PREF_KEY, safe);
+  return safe;
+}
+
+function syncRadioStationControl() {
+  if (!radioStationSelect) return;
+  const value = getSelectedRadioStation();
+  radioStationSelect.value = value;
+}
+
 function renderWallet() {
   const credits = getWalletCredits();
   const emeralds = getWalletEmeralds();
   if (walletAmount) walletAmount.textContent = `Crédits: ${credits}`;
-  if (walletCreditsValue) walletCreditsValue.textContent = `${credits.toLocaleString("fr-FR")}`;
-  if (walletEmeraldValue) walletEmeraldValue.textContent = `${emeralds.toLocaleString("fr-FR")}`;
+  if (walletCreditsValue) walletCreditsValue.textContent = formatWalletPopupValue(credits);
+  if (walletEmeraldValue) walletEmeraldValue.textContent = formatWalletPopupValue(emeralds);
 }
 
 function saveProfileFromForm() {
@@ -193,12 +213,90 @@ function showFxNotice(text) {
   window.setTimeout(() => banner.remove(), 1200);
 }
 
+function pulseShopCard(stateClass) {
+  const card = document.querySelector(".shop-card");
+  if (!card) return;
+  card.classList.remove("shop-card-success", "shop-card-warn");
+  if (!stateClass) return;
+  void card.offsetWidth;
+  card.classList.add(stateClass);
+}
+
+function animateShopTotals() {
+  [shopCarPrice, shopColorPrice, shopTotalPrice].forEach((el) => {
+    if (!el) return;
+    el.classList.remove("shop-price-pop");
+    void el.offsetWidth;
+    el.classList.add("shop-price-pop");
+  });
+}
+
+
+function currentVehicleId() {
+  return VEHICLE_CATALOG[carIndex]?.id || VEHICLE_CATALOG[0]?.id || "RX7";
+}
+
+function refreshShopActionButton(card) {
+  if (!equipFromShopBtn) return;
+  const carOwned = isVehicleOwned(card.id);
+  const colorOwned = isVehicleColorOwned(card.id, card.color?.token || "white");
+  if (!carOwned) {
+    equipFromShopBtn.textContent = `Acheter la voiture (${card.carPriceCredits.toLocaleString("fr-FR")} crédits)`;
+    equipFromShopBtn.dataset.actionState = "buy-car";
+    return;
+  }
+  if (!colorOwned) {
+    equipFromShopBtn.textContent = `Acheter couleur (${card.colorPriceCredits.toLocaleString("fr-FR")} crédits)`;
+    equipFromShopBtn.dataset.actionState = "buy-color";
+    return;
+  }
+  equipFromShopBtn.textContent = "Équiper pour la course";
+  equipFromShopBtn.dataset.actionState = "equip";
+}
+
 function equipCurrentFromShop() {
-  const [name] = cars[selectedQuality][carIndex];
-  const vehicleId = name.split(" ")[0].toUpperCase();
+  const vehicleId = currentVehicleId();
+  const card = getVehicleCard(vehicleId, selectedQuality, selectedShopColor);
+  const credits = getWalletCredits();
+  const carOwned = isVehicleOwned(vehicleId);
+  const colorToken = card.color?.token || "white";
+  const colorOwned = isVehicleColorOwned(vehicleId, colorToken);
+
+  if (!carOwned) {
+    if (credits < card.carPriceCredits) {
+      showFxNotice("Crédits insuffisants pour cette voiture");
+      pulseShopCard("shop-card-warn");
+      return;
+    }
+    localStorage.setItem(PLAYER_WALLET_KEY, String(credits - card.carPriceCredits));
+    unlockVehicle(vehicleId);
+    renderWallet();
+    showFxNotice(`${vehicleId} débloquée`);
+    pulseShopCard("shop-card-success");
+    renderCar();
+    return;
+  }
+
+  if (!colorOwned) {
+    if (credits < card.colorPriceCredits) {
+      showFxNotice("Crédits insuffisants pour cette couleur");
+      pulseShopCard("shop-card-warn");
+      return;
+    }
+    localStorage.setItem(PLAYER_WALLET_KEY, String(credits - card.colorPriceCredits));
+    unlockVehicleColor(vehicleId, colorToken);
+    renderWallet();
+    showFxNotice(`Couleur ${card.color?.label || colorToken} débloquée`);
+    pulseShopCard("shop-card-success");
+    renderCar();
+    return;
+  }
+
   localStorage.setItem("selectedVehicle", vehicleId);
   localStorage.setItem("selectedVehicleQuality", selectedQuality);
-  showFxNotice(`${vehicleId} équipé (${selectedQuality.toUpperCase()})`);
+  localStorage.setItem("selectedVehicleColor", colorToken);
+  showFxNotice(`${vehicleId} équipé (${selectedQuality.toUpperCase()} · ${card.color?.label || "Blanc"})`);
+  pulseShopCard("shop-card-success");
 }
 
 function openPopup(popupId) {
@@ -220,16 +318,40 @@ function openConstruction(featureName) {
 }
 
 function renderCar() {
-  const [name, src] = cars[selectedQuality][carIndex];
+  const vehicleId = currentVehicleId();
+  const card = getVehicleCard(vehicleId, selectedQuality, selectedShopColor);
   const carImage = document.getElementById("carImage");
   const carName = document.getElementById("carName");
+  const carOwned = isVehicleOwned(vehicleId);
+  const colorOwned = isVehicleColorOwned(vehicleId, card.color?.token || "white");
 
-  carImage.src = src;
-  carImage.alt = name;
-  carName.textContent = `${name} · Couleurs dispo: 5 (à brancher)`;
+  carImage.src = card.image;
+  carImage.alt = `${card.name} ${card.quality.toUpperCase()} ${card.color?.label || "Blanc"}`;
+  carImage.classList.toggle("shop-car-locked", !carOwned);
+  carName.textContent = `${card.name} · Couleur: ${card.color?.label || "Blanc"} · ${carOwned ? "Voiture débloquée" : "Voiture verrouillée"}`;
   if (shopVariantLabel) shopVariantLabel.textContent = selectedQuality.toUpperCase();
+  if (shopCarPrice) shopCarPrice.textContent = `${card.carPriceCredits.toLocaleString("fr-FR")} crédits`;
+  if (shopColorPrice) shopColorPrice.textContent = `${card.colorPriceCredits.toLocaleString("fr-FR")} crédits`;
+  if (shopTotalPrice) {
+    const displayedTotal = carOwned ? (colorOwned ? 0 : card.colorPriceCredits) : card.carPriceCredits;
+    shopTotalPrice.textContent = `${displayedTotal.toLocaleString("fr-FR")} crédits`;
+  }
+  animateShopTotals();
+  refreshShopActionButton(card);
 }
 
+function populateShopColors() {
+  if (!shopColorSelect) return;
+  shopColorSelect.innerHTML = "";
+  COLOR_TOKEN_ORDER.forEach((token) => {
+    const option = document.createElement("option");
+    option.value = token;
+    option.textContent = token.toUpperCase();
+    shopColorSelect.appendChild(option);
+  });
+  if (!COLOR_TOKEN_ORDER.includes(selectedShopColor)) selectedShopColor = "white";
+  shopColorSelect.value = selectedShopColor;
+}
 
 function unlockIntroAudio() {
   if (introAudioUnlocked) return;
@@ -679,6 +801,13 @@ qualityButtons.forEach((button) => {
   });
 });
 
+
+radioStationSelect?.addEventListener("change", () => {
+  const safe = saveSelectedRadioStation(radioStationSelect.value);
+  radioStationSelect.value = safe;
+  const selectedLabel = RADIO_STATIONS.find((station) => station.id === safe)?.label || "Random Mix";
+  showFxNotice(`Radio en jeu: ${selectedLabel}`);
+});
 document.getElementById("prevCar").addEventListener("click", () => {
   const list = cars[selectedQuality];
   carIndex = (carIndex - 1 + list.length) % list.length;
@@ -694,13 +823,20 @@ document.getElementById("nextCar").addEventListener("click", () => {
 document.getElementById("shopVariantPrev")?.addEventListener("click", () => cycleShopVariant(-1));
 document.getElementById("shopVariantNext")?.addEventListener("click", () => cycleShopVariant(1));
 document.getElementById("saveProfileBtn")?.addEventListener("click", saveProfileFromForm);
-document.getElementById("equipFromShopBtn")?.addEventListener("click", equipCurrentFromShop);
+equipFromShopBtn?.addEventListener("click", equipCurrentFromShop);
+shopColorSelect?.addEventListener("change", () => {
+  selectedShopColor = shopColorSelect.value || "white";
+  localStorage.setItem("selectedVehicleColor", selectedShopColor);
+  renderCar();
+});
 
 setupAssetFallbacks();
 initMenuScene();
+populateShopColors();
 renderCar();
 renderProfile();
 renderWallet();
+syncRadioStationControl();
 renderMenuBroadcast();
 runBootSequence();
 

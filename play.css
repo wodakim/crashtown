@@ -124,6 +124,38 @@ body {
   color: #fff;
 }
 
+
+.radio-controls {
+  position: absolute;
+  z-index: 4;
+  top: calc(11.2% + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+}
+
+.radio-mini-btn {
+  min-width: 40px;
+  min-height: 34px;
+  border: 2px solid #1b2530;
+  border-radius: 8px;
+  background: rgba(40, 62, 82, 0.92);
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.radio-mini-btn.active {
+  background: #ff9f1f;
+}
+
+.radio-mini-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .top-controls {
   position: absolute;
   z-index: 4;
@@ -169,6 +201,28 @@ body {
   position: absolute;
   width: 11%;
   object-fit: contain;
+}
+
+
+.car-shadow {
+  position: absolute;
+  width: 9.5%;
+  height: 2.4%;
+  border-radius: 50%;
+  transform: translateX(0) scale(1);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.38) 0%, rgba(0, 0, 0, 0.12) 55%, rgba(0, 0, 0, 0.02) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.player-shadow {
+  left: 44.5%;
+  top: 89%;
+  opacity: 0.3;
+}
+
+.enemy-shadow {
+  opacity: 0.28;
 }
 
 .gift-drop {
@@ -276,6 +330,15 @@ body {
   width: 140px;
 }
 
+
+.popup select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #aab5c2;
+  padding: 8px;
+  background: #0f1620;
+  color: #fff;
+}
 .confirm-base {
   width: 100%;
 }
@@ -474,6 +537,15 @@ body {
   text-shadow: 1px 1px 0 #000;
 }
 
+.combo-meter.combo-pop {
+  animation: comboPop 180ms ease-out;
+}
+
+@keyframes comboPop {
+  0% { transform: translateX(-50%) scale(0.94); opacity: 0.82; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
 
 .lane-obstacle {
   position: absolute;
@@ -488,3 +560,35 @@ body {
   background: linear-gradient(180deg, #ff9a1a 0%, #d65100 100%);
   border: 2px solid #2a1900;
 }
+
+/* Priority pass — in-game button animations */
+.circle-btn,
+.asset-btn,
+.close-btn {
+  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 120ms ease;
+  transform-origin: center center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .circle-btn:hover,
+  .asset-btn:hover,
+  .close-btn:hover {
+    transform: translateY(-1px) scale(1.02);
+    filter: brightness(1.06);
+  }
+}
+
+.circle-btn:active,
+.asset-btn:active,
+.close-btn:active {
+  transform: translateY(1px) scale(0.96);
+  filter: brightness(0.94);
+}
+
+.circle-btn:focus-visible,
+.asset-btn:focus-visible,
+.close-btn:focus-visible {
+  outline: 2px solid #ffe36a;
+  outline-offset: 2px;
+}
+

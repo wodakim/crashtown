@@ -1,65 +1,11 @@
 import { initPagePerf, markNavigationStart, reportNavigationArrival, runExitTransition } from "./perf-tools.js";
 import { navigateWithPreload as sharedNavigateWithPreload, preloadAsset } from "./src/core/navigation.js";
-const vehicles = [
-  {
-    id: "PORSHE",
-    name: "PORSHE",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_porshe_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_porshe_pixel_base_v01.png",
-    },
-    sound: "./Assets/Sounds/Garage/Car/Sound_effect_car_porsche_sample_v01.mp3",
-  },
-  {
-    id: "BMW",
-    name: "BMW",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_bmw_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_bmw_pixel_base_v01.png",
-    },
-    sound: "./Assets/Sounds/Garage/Car/Sound_effect_car_bmw_sample_v01.mp3",
-  },
-  {
-    id: "GALLARDO",
-    name: "GALLARDO",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_gallardo_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_gallardo_pixel_base_v01.png",
-    },
-    sound: "./Assets/Sounds/Garage/Car/Sound_effect_car_gallardo_sample_v01.mp3",
-  },
-  {
-    id: "RX7",
-    name: "RX7",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_rx7_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_rx7_pixel_base_v01.png",
-    },
-    sound: "",
-  },
-  {
-    id: "CHIRON",
-    name: "CHIRON",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_chiron_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_chiron_pixel_base_v01.png",
-    },
-    sound: "",
-  },
-  {
-    id: "CAMARO",
-    name: "CAMARO",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_camaro_pixel_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_camaro_pixel_base_v01.png",
-    },
-    sound: "",
-  },
-];
+import { VEHICLE_CATALOG as vehicles, VEHICLE_QUALITY_ORDER as qualityOrder, getVehicleVariant } from "./src/data/vehicles.js";
+import { isVehicleColorOwned, isVehicleOwned } from "./src/data/vehicleOwnership.js";
 
-const qualityOrder = ["hd", "pixel"];
 let currentQuality = localStorage.getItem("selectedVehicleQuality") || "hd";
 let currentIndex = 0;
+let selectedColor = localStorage.getItem("selectedVehicleColor") || "white";
 
 const carImage = document.getElementById("carImage");
 const carName = document.getElementById("carName");
@@ -72,13 +18,15 @@ const garageSettingsPopup = document.getElementById("garageSettingsPopup");
 const garageMusicVolume = document.getElementById("garageMusicVolume");
 const garageAutoPlayToggle = document.getElementById("garageAutoPlayToggle");
 const navLoading = document.getElementById("navLoading");
+const colorButtons = Array.from(document.querySelectorAll(".color-btn"));
+const carStage = document.querySelector(".car-stage");
+const startRaceBtn = document.getElementById("startRaceBtn");
 let garageMusicWanted = true;
 const GARAGE_SETTINGS_KEY = "ct_garage_settings_v1";
 
 const PAGE_NAME = "garage.html";
 initPagePerf(PAGE_NAME);
 reportNavigationArrival(PAGE_NAME);
-
 
 function getGarageSettings() {
   const fallback = { musicVolume: 60, autoPlayMusic: true };
@@ -108,8 +56,10 @@ function applyGarageSettings() {
 }
 
 function findInitialVehicle() {
-  const selected = localStorage.getItem("selectedVehicle") || "PORSHE";
-  const index = vehicles.findIndex((vehicle) => vehicle.id === selected || vehicle.name === selected);
+  const selected = localStorage.getItem("selectedVehicle") || "RX7";
+  const fallback = vehicles.find((vehicle) => isVehicleOwned(vehicle.id)) || vehicles[0];
+  const resolvedId = isVehicleOwned(selected) ? selected : fallback.id;
+  const index = vehicles.findIndex((vehicle) => vehicle.id === resolvedId || vehicle.name === resolvedId);
   currentIndex = index >= 0 ? index : 0;
   if (!qualityOrder.includes(currentQuality)) currentQuality = "hd";
 }
@@ -118,19 +68,61 @@ function selectedVehicle() {
   return vehicles[currentIndex];
 }
 
-function renderVehicle() {
-  const vehicle = selectedVehicle();
-  const image = vehicle.variants[currentQuality] || vehicle.variants.hd;
-  carImage.src = image;
-  carImage.alt = `${vehicle.name} ${currentQuality.toUpperCase()}`;
-  carName.textContent = `${vehicle.name}`;
-  variantLabel.textContent = currentQuality.toUpperCase();
+function animateGarageCarSwap() {
+  if (!carImage) return;
+  carImage.classList.remove("garage-car-swap");
+  void carImage.offsetWidth;
+  carImage.classList.add("garage-car-swap");
 }
 
 function saveSelectedVehicle() {
   const vehicle = selectedVehicle();
+  if (!isVehicleOwned(vehicle.id) || !isVehicleColorOwned(vehicle.id, selectedColor)) return;
   localStorage.setItem("selectedVehicle", vehicle.id);
   localStorage.setItem("selectedVehicleQuality", currentQuality);
+  localStorage.setItem("selectedVehicleColor", selectedColor);
+}
+
+function renderColorButtons(vehicle) {
+  const isUnlocked = isVehicleOwned(vehicle.id);
+  const firstOwnedColor = vehicle.colors.find((color) => isVehicleColorOwned(vehicle.id, color.token))?.token || "white";
+  if (!isVehicleColorOwned(vehicle.id, selectedColor)) selectedColor = firstOwnedColor;
+
+  colorButtons.forEach((btn, idx) => {
+    const colorDef = vehicle.colors[idx];
+    if (!colorDef) {
+      btn.classList.add("hidden");
+      btn.disabled = true;
+      return;
+    }
+    btn.classList.remove("hidden");
+    btn.dataset.colorToken = colorDef.token;
+    btn.style.backgroundColor = colorDef.hex;
+    btn.title = colorDef.label;
+
+    const colorOwned = isUnlocked && isVehicleColorOwned(vehicle.id, colorDef.token);
+    btn.disabled = !colorOwned;
+    btn.classList.toggle("active", colorDef.token === selectedColor && colorOwned);
+    btn.classList.toggle("locked", !colorOwned);
+  });
+}
+
+function renderVehicle() {
+  const vehicle = selectedVehicle();
+  const unlocked = isVehicleOwned(vehicle.id);
+  const image = getVehicleVariant(vehicle.id, currentQuality, selectedColor);
+
+  animateGarageCarSwap();
+  carImage.src = image;
+  carImage.alt = `${vehicle.name} ${currentQuality.toUpperCase()}`;
+  carName.textContent = unlocked ? `${vehicle.name} · ${selectedColor.toUpperCase()}` : `${vehicle.name} · VERROUILLÉ (acheter dans la boutique)`;
+  variantLabel.textContent = currentQuality.toUpperCase();
+
+  carStage?.classList.toggle("locked", !unlocked);
+  startRaceBtn.disabled = !unlocked;
+  startRaceBtn.classList.toggle("locked", !unlocked);
+
+  renderColorButtons(vehicle);
 }
 
 function playVehicleSound() {
@@ -202,7 +194,6 @@ function setupAssetFallbacks() {
   });
 }
 
-
 async function navigateWithPreload(targetHref, assets) {
   return sharedNavigateWithPreload({
     targetHref,
@@ -217,7 +208,6 @@ async function navigateWithPreload(targetHref, assets) {
 
 function cycleVehicle(direction) {
   currentIndex = (currentIndex + direction + vehicles.length) % vehicles.length;
-  saveSelectedVehicle();
   renderVehicle();
   playVehicleSound();
 }
@@ -226,7 +216,7 @@ function cycleVariant(direction) {
   const idx = qualityOrder.indexOf(currentQuality);
   const next = (idx + direction + qualityOrder.length) % qualityOrder.length;
   currentQuality = qualityOrder[next];
-  saveSelectedVehicle();
+  localStorage.setItem("selectedVehicleQuality", currentQuality);
   renderVehicle();
 }
 
@@ -241,25 +231,32 @@ document.getElementById("nextCar").addEventListener("click", () => {
 document.getElementById("variantPrev").addEventListener("click", () => cycleVariant(-1));
 document.getElementById("variantNext").addEventListener("click", () => cycleVariant(1));
 
-document.querySelectorAll(".color-btn").forEach((btn) => {
-  btn.style.backgroundColor = btn.dataset.color;
+colorButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".color-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    carImage.style.filter = "drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5)) saturate(1.1) hue-rotate(0deg)";
+    const token = btn.dataset.colorToken || "white";
+    const vehicle = selectedVehicle();
+    if (!isVehicleOwned(vehicle.id) || !isVehicleColorOwned(vehicle.id, token)) return;
+    selectedColor = token;
+    saveSelectedVehicle();
+    renderVehicle();
   });
 });
 
 document.getElementById("startRaceBtn").addEventListener("click", async () => {
+  const vehicle = selectedVehicle();
+  if (!isVehicleOwned(vehicle.id) || !isVehicleColorOwned(vehicle.id, selectedColor)) return;
   try {
     selectionSound.currentTime = 0;
     await selectionSound.play();
   } catch {
     // no-op
   }
+
   saveSelectedVehicle();
-  const selected = selectedVehicle();
-  const qualityImage = selected.variants[currentQuality] || selected.variants.hd;
+  const qualityImage = getVehicleVariant(vehicle.id, currentQuality, selectedColor);
+  const selectedStation = localStorage.getItem("ct_radio_station_v1") || "radio_random";
+  const stationPreviewTrack = `/Assets/Sounds/Onroad/radio/${selectedStation}/Sound_music_onroad_playsong1_sample_v01.mp3`;
+
   navigateWithPreload("play.html", [
     qualityImage,
     "./Assets/Road/Road_street_baseloop_v01.png",
@@ -267,7 +264,7 @@ document.getElementById("startRaceBtn").addEventListener("click", async () => {
     "/Assets/Road/Obstacles/Obstacles_decor_base_v01.svg",
     "./Assets/Road/obstacles/Obstacles_decor_base_v01.svg",
     "./Assets/Road/Obstacles/Obstacles_decor_base_v01.svg",
-    "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong1_sample_v01.mp3",
+    stationPreviewTrack,
   ]);
 });
 
@@ -320,19 +317,18 @@ window.addEventListener("pagehide", () => {
 document.addEventListener("visibilitychange", handleAppVisibility);
 window.addEventListener("blur", handleAppVisibility);
 
-
 async function runGarageBootSequence() {
   navLoading.classList.remove("hidden");
   navLoading.classList.remove("fade-out");
   const selected = selectedVehicle();
-  const carImgSrc = selected.variants[currentQuality] || selected.variants.hd;
+  const carImgSrc = getVehicleVariant(selected.id, currentQuality, selectedColor);
   const criticalAssets = [
     "./Assets/UI/Screens/MainMenu/ui_garage_menu_bg_v01.svg",
     "./Assets/Branding/Logo/Brand_crashtown_logo_main_v01.svg",
-    carImgSrc
+    carImgSrc,
   ];
-  await Promise.all(criticalAssets.map(src => preloadAsset(src)));
-  await new Promise(resolve => setTimeout(resolve, 300));
+  await Promise.all(criticalAssets.map((src) => preloadAsset(src)));
+  await new Promise((resolve) => setTimeout(resolve, 300));
   navLoading.classList.add("fade-out");
   setTimeout(() => {
     navLoading.classList.add("hidden");
