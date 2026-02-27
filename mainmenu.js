@@ -1,7 +1,8 @@
 import { initPagePerf, markNavigationStart, reportNavigationArrival, runExitTransition } from "./perf-tools.js";
 import { navigateWithPreload as sharedNavigateWithPreload, preloadAsset } from "./src/core/navigation.js";
 import { RADIO_STATION_PREF_KEY, RADIO_STATIONS, isKnownStation } from "./src/data/radioStations.js";
-import { COLOR_TOKEN_ORDER, getVehicleCard, listVehiclesForQuality } from "./src/data/vehicles.js";
+import { COLOR_TOKEN_ORDER, VEHICLE_CATALOG, getVehicleCard, listVehiclesForQuality } from "./src/data/vehicles.js";
+import { isVehicleColorOwned, isVehicleOwned, unlockVehicle, unlockVehicleColor } from "./src/data/vehicleOwnership.js";
 const overlay = document.getElementById("overlay");
 const popups = {
   settingsPopup: document.getElementById("settingsPopup"),
@@ -70,6 +71,7 @@ const shopColorSelect = document.getElementById("shopColorSelect");
 const shopCarPrice = document.getElementById("shopCarPrice");
 const shopColorPrice = document.getElementById("shopColorPrice");
 const shopTotalPrice = document.getElementById("shopTotalPrice");
+const equipFromShopBtn = document.getElementById("equipFromShopBtn");
 const profileNicknameInput = document.getElementById("profileNickname");
 const profileLevel = document.getElementById("profileLevel");
 const profileRank = document.getElementById("profileRank");
@@ -211,15 +213,64 @@ function showFxNotice(text) {
   window.setTimeout(() => banner.remove(), 1200);
 }
 
+
+function currentVehicleId() {
+  return VEHICLE_CATALOG[carIndex]?.id || VEHICLE_CATALOG[0]?.id || "RX7";
+}
+
+function refreshShopActionButton(card) {
+  if (!equipFromShopBtn) return;
+  const carOwned = isVehicleOwned(card.id);
+  const colorOwned = isVehicleColorOwned(card.id, card.color?.token || "white");
+  if (!carOwned) {
+    equipFromShopBtn.textContent = `Acheter la voiture (${card.carPriceCredits.toLocaleString("fr-FR")} crédits)`;
+    return;
+  }
+  if (!colorOwned) {
+    equipFromShopBtn.textContent = `Acheter couleur (${card.colorPriceCredits.toLocaleString("fr-FR")} crédits)`;
+    return;
+  }
+  equipFromShopBtn.textContent = "Équiper pour la course";
+}
+
 function equipCurrentFromShop() {
-  const [name] = cars[selectedQuality][carIndex];
-  const vehicleId = name.split(" ")[0].toUpperCase();
+  const vehicleId = currentVehicleId();
+  const card = getVehicleCard(vehicleId, selectedQuality, selectedShopColor);
+  const credits = getWalletCredits();
+  const carOwned = isVehicleOwned(vehicleId);
+  const colorToken = card.color?.token || "white";
+  const colorOwned = isVehicleColorOwned(vehicleId, colorToken);
+
+  if (!carOwned) {
+    if (credits < card.carPriceCredits) {
+      showFxNotice("Crédits insuffisants pour cette voiture");
+      return;
+    }
+    localStorage.setItem(PLAYER_WALLET_KEY, String(credits - card.carPriceCredits));
+    unlockVehicle(vehicleId);
+    renderWallet();
+    showFxNotice(`${vehicleId} débloquée`);
+    renderCar();
+    return;
+  }
+
+  if (!colorOwned) {
+    if (credits < card.colorPriceCredits) {
+      showFxNotice("Crédits insuffisants pour cette couleur");
+      return;
+    }
+    localStorage.setItem(PLAYER_WALLET_KEY, String(credits - card.colorPriceCredits));
+    unlockVehicleColor(vehicleId, colorToken);
+    renderWallet();
+    showFxNotice(`Couleur ${card.color?.label || colorToken} débloquée`);
+    renderCar();
+    return;
+  }
+
   localStorage.setItem("selectedVehicle", vehicleId);
   localStorage.setItem("selectedVehicleQuality", selectedQuality);
-  localStorage.setItem("selectedVehicleColor", selectedShopColor);
-  const card = getVehicleCard(vehicleId, selectedQuality, selectedShopColor);
-  const colorLabel = card.color?.label || "Blanc";
-  showFxNotice(`${vehicleId} équipé (${selectedQuality.toUpperCase()} · ${colorLabel})`);
+  localStorage.setItem("selectedVehicleColor", colorToken);
+  showFxNotice(`${vehicleId} équipé (${selectedQuality.toUpperCase()} · ${card.color?.label || "Blanc"})`);
 }
 
 function openPopup(popupId) {
@@ -241,22 +292,25 @@ function openConstruction(featureName) {
 }
 
 function renderCar() {
-  const [name] = cars[selectedQuality][carIndex];
-  const vehicleId = name.split(" ")[0].toUpperCase();
+  const vehicleId = currentVehicleId();
   const card = getVehicleCard(vehicleId, selectedQuality, selectedShopColor);
   const carImage = document.getElementById("carImage");
   const carName = document.getElementById("carName");
+  const carOwned = isVehicleOwned(vehicleId);
+  const colorOwned = isVehicleColorOwned(vehicleId, card.color?.token || "white");
 
   carImage.src = card.image;
   carImage.alt = `${card.name} ${card.quality.toUpperCase()} ${card.color?.label || "Blanc"}`;
-  carName.textContent = `${name} · Couleur: ${card.color?.label || "Blanc"}`;
+  carName.textContent = `${card.name} · Couleur: ${card.color?.label || "Blanc"} · ${carOwned ? "Voiture débloquée" : "Voiture verrouillée"}`;
   if (shopVariantLabel) shopVariantLabel.textContent = selectedQuality.toUpperCase();
   if (shopCarPrice) shopCarPrice.textContent = `${card.carPriceCredits.toLocaleString("fr-FR")} crédits`;
   if (shopColorPrice) shopColorPrice.textContent = `${card.colorPriceCredits.toLocaleString("fr-FR")} crédits`;
-  if (shopTotalPrice) shopTotalPrice.textContent = `${card.totalPriceCredits.toLocaleString("fr-FR")} crédits`;
+  if (shopTotalPrice) {
+    const displayedTotal = carOwned ? (colorOwned ? 0 : card.colorPriceCredits) : card.carPriceCredits;
+    shopTotalPrice.textContent = `${displayedTotal.toLocaleString("fr-FR")} crédits`;
+  }
+  refreshShopActionButton(card);
 }
-
-
 
 function populateShopColors() {
   if (!shopColorSelect) return;
@@ -741,7 +795,7 @@ document.getElementById("nextCar").addEventListener("click", () => {
 document.getElementById("shopVariantPrev")?.addEventListener("click", () => cycleShopVariant(-1));
 document.getElementById("shopVariantNext")?.addEventListener("click", () => cycleShopVariant(1));
 document.getElementById("saveProfileBtn")?.addEventListener("click", saveProfileFromForm);
-document.getElementById("equipFromShopBtn")?.addEventListener("click", equipCurrentFromShop);
+equipFromShopBtn?.addEventListener("click", equipCurrentFromShop);
 shopColorSelect?.addEventListener("change", () => {
   selectedShopColor = shopColorSelect.value || "white";
   localStorage.setItem("selectedVehicleColor", selectedShopColor);

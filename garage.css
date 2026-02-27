@@ -116,6 +116,38 @@ body {
   outline: 3px solid #2f8ed8;
 }
 
+.car-stage.locked {
+  position: relative;
+}
+
+.car-stage.locked::after {
+  content: "VERROUILLÉ";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 8px;
+}
+
+.color-btn.locked,
+.color-btn:disabled {
+  filter: grayscale(1) brightness(0.42);
+  cursor: not-allowed;
+  transform: translateY(1px) scale(0.96);
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.35);
+}
+
+.play-btn.locked,
+.play-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(1) brightness(0.7);
+}
+
 .play-btn {
   border: 0;
   background: transparent;

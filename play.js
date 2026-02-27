@@ -4,7 +4,7 @@ import { ensureStorageVersion, readNumber, writeNumber } from "./src/core/storag
 import { trackEvent } from "./src/core/telemetry.js";
 import { gameplayConfig } from "./src/data/gameplay.js";
 import { RADIO_STATION_PREF_KEY, buildStationTracks, isKnownStation } from "./src/data/radioStations.js";
-import { VEHICLE_CATALOG } from "./src/data/vehicles.js";
+import { VEHICLE_CATALOG, getVehicleVariant } from "./src/data/vehicles.js";
 import { safePlay, stopAndReset } from "./src/core/audio.js";
 const lanes = gameplayConfig.lanes;
 const ENEMY_SPAWN_INTERVAL_MS = gameplayConfig.enemySpawnIntervalMs;
@@ -182,9 +182,10 @@ comboMeter.className = "combo-meter hidden";
 playApp?.appendChild(comboMeter);
 
 function selectedVehicleSrc() {
-  const selected = localStorage.getItem("selectedVehicle") || "PORSHE";
+  const selected = localStorage.getItem("selectedVehicle") || "RX7";
   const quality = localStorage.getItem("selectedVehicleQuality") || "hd";
-  return vehicleAssets[selected]?.[quality] || vehicleAssets.PORSHE.hd;
+  const color = localStorage.getItem("selectedVehicleColor") || "white";
+  return getVehicleVariant(selected, quality, color) || vehicleAssets.RX7?.hd || vehicleAssets.PORSHE?.hd;
 }
 
 function playSfx(audio) {

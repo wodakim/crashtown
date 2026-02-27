@@ -64,3 +64,9 @@ shop: {
 2. Lancer `npm run vehicle:scan`.
 3. Ajouter/compléter l’entrée dans `src/data/vehicles.js` (id, nom, son, couleurs, prix).
 4. Vérifier la carte dans la boutique (prix voiture/couleur/total).
+
+
+## Règle de départ gameplay
+
+- Au premier lancement, seule `RX7` en `white` est débloquée gratuitement.
+- Toutes les autres voitures/couleurs doivent être achetées dans la boutique avant sélection dans le garage.
