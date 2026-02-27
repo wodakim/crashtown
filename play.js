@@ -3,6 +3,7 @@ import { isFeatureEnabled } from "./src/core/featureFlags.js";
 import { ensureStorageVersion, readNumber, writeNumber } from "./src/core/storage.js";
 import { trackEvent } from "./src/core/telemetry.js";
 import { gameplayConfig } from "./src/data/gameplay.js";
+import { RADIO_STATION_PREF_KEY, buildStationTracks, isKnownStation } from "./src/data/radioStations.js";
 import { safePlay, stopAndReset } from "./src/core/audio.js";
 const lanes = gameplayConfig.lanes;
 const ENEMY_SPAWN_INTERVAL_MS = gameplayConfig.enemySpawnIntervalMs;
@@ -35,7 +36,6 @@ const PLAYER_WALLET_KEY = "wallet_credits_v1";
 const GIFT_REWARD_CREDITS = gameplayConfig.gift.rewardCredits;
 const GIFT_SPAWN_MIN_MS = gameplayConfig.gift.spawnMinMs;
 const GIFT_SPAWN_MAX_MS = gameplayConfig.gift.spawnMaxMs;
-const RADIO_TRACK_PREF_KEY = "radio_track_idx_v1";
 const OBSTACLE_SPAWN_INTERVAL_MS = gameplayConfig.obstacle.spawnIntervalMs;
 const MAX_ACTIVE_OBSTACLES = gameplayConfig.obstacle.maxActive;
 const RUN_EVENT_MIN_INTERVAL_MS = gameplayConfig.runEvents.minIntervalMs;
@@ -129,12 +129,7 @@ const botVehicleAssets = {
 };
 
 
-const radioTracks = [
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong1_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong2_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong3_loopX3_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_song_fellas_sample_v01.mp3.mp3",
-];
+let radioUnlockBound = false;
 
 const state = {
   running: true,
@@ -185,6 +180,8 @@ const state = {
     endsAt: 0,
     nextAt: performance.now() + RUN_EVENT_MIN_INTERVAL_MS,
   },
+  currentRadioStation: null,
+  currentRadioTrack: null,
 };
 
 const feedbackLayer = document.createElement("div");
@@ -223,15 +220,26 @@ function addWalletCredits(amount) {
   return next;
 }
 
-function getSavedRadioTrackIndex() {
-  const raw = readNumber(RADIO_TRACK_PREF_KEY, Number.NaN);
-  if (Number.isInteger(raw) && raw >= 0 && raw < radioTracks.length) return raw;
-  return 0;
+function getSavedRadioStation() {
+  const raw = localStorage.getItem(RADIO_STATION_PREF_KEY) || "radio_random";
+  return isKnownStation(raw) ? raw : "radio_random";
 }
 
-function saveRadioTrackIndex(index) {
-  const safe = Number.isInteger(index) && index >= 0 && index < radioTracks.length ? index : 0;
-  writeNumber(RADIO_TRACK_PREF_KEY, safe);
+function saveRadioStation(stationId) {
+  const safe = isKnownStation(stationId) ? stationId : "radio_random";
+  localStorage.setItem(RADIO_STATION_PREF_KEY, safe);
+  return safe;
+}
+
+function pickNextTrack(stationId) {
+  const tracks = buildStationTracks(stationId);
+  if (!tracks.length) return null;
+  let next = tracks[Math.floor(Math.random() * tracks.length)];
+  if (tracks.length > 1 && next === state.currentRadioTrack) {
+    next = tracks[(tracks.indexOf(next) + 1) % tracks.length];
+  }
+  state.currentRadioTrack = next;
+  return next;
 }
 
 function migrateLegacyStorageKeys() {
@@ -242,8 +250,8 @@ function migrateLegacyStorageKeys() {
     }
 
     const legacyRadio = Number(localStorage.getItem("ct_radio_track_idx_v1"));
-    if (Number.isInteger(legacyRadio) && legacyRadio >= 0 && legacyRadio < radioTracks.length && !Number.isFinite(readNumber(RADIO_TRACK_PREF_KEY, Number.NaN))) {
-      writeNumber(RADIO_TRACK_PREF_KEY, legacyRadio);
+    if (Number.isInteger(legacyRadio) && !localStorage.getItem(RADIO_STATION_PREF_KEY)) {
+      saveRadioStation("radio_random");
     }
   } catch {
     // no-op
@@ -1056,20 +1064,48 @@ function mainLoop(now) {
 }
 
 
-function ensureRadioPlayback({ start = true } = {}) {
-  if (!radioPlayer) return;
-  const pick = Number(radioSelect?.value ?? getSavedRadioTrackIndex());
-  saveRadioTrackIndex(pick);
-  const next = radioTracks[pick] || radioTracks[0];
-  const sameTrack = radioPlayer.src.endsWith(next);
-  if (!sameTrack) {
-    radioPlayer.src = next;
+async function ensureRadioPlayback({ start = true, forceNext = false } = {}) {
+  if (!radioPlayer) return false;
+
+  const stationFromUi = typeof radioSelect?.value === "string" ? radioSelect.value : getSavedRadioStation();
+  const stationId = saveRadioStation(stationFromUi);
+  if (radioSelect && radioSelect.value !== stationId) radioSelect.value = stationId;
+
+  const stationChanged = state.currentRadioStation !== stationId;
+  state.currentRadioStation = stationId;
+
+  if (stationChanged || forceNext || !radioPlayer.src) {
+    const nextTrack = pickNextTrack(stationId);
+    if (nextTrack) {
+      radioPlayer.src = nextTrack;
+    }
   }
-  radioPlayer.loop = true;
+
+  radioPlayer.loop = false;
   radioPlayer.volume = 0.62;
-  if (!start) return;
-  if (sameTrack && !radioPlayer.paused) return;
-  radioPlayer.play().catch(() => {});
+
+  if (!start) return false;
+  if (!radioPlayer.paused && !stationChanged && !forceNext) return true;
+  return safePlay(radioPlayer);
+}
+
+function bindRadioUnlockOnFirstInteraction() {
+  if (radioUnlockBound) return;
+  radioUnlockBound = true;
+
+  const unlock = async () => {
+    const started = await ensureRadioPlayback({ start: true });
+    dismissTutorialOverlay();
+    if (!started) return;
+    radioUnlockBound = false;
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("touchstart", unlock);
+  };
+
+  window.addEventListener("pointerdown", unlock, { passive: true });
+  window.addEventListener("keydown", unlock);
+  window.addEventListener("touchstart", unlock, { passive: true });
 }
 
 
@@ -1235,17 +1271,15 @@ function bindControls() {
   });
 
   radioSelect?.addEventListener("change", () => {
-    saveRadioTrackIndex(Number(radioSelect.value));
-    ensureRadioPlayback();
+    saveRadioStation(radioSelect.value);
+    state.currentRadioTrack = null;
+    ensureRadioPlayback({ start: true, forceNext: true });
   });
-  const onFirstInteraction = () => {
-    ensureRadioPlayback({ start: true });
-    dismissTutorialOverlay();
-    window.removeEventListener("pointerdown", onFirstInteraction);
-    window.removeEventListener("keydown", onFirstInteraction);
-  };
-  window.addEventListener("pointerdown", onFirstInteraction, { once: true });
-  window.addEventListener("keydown", onFirstInteraction, { once: true });
+
+  radioPlayer?.addEventListener("ended", () => {
+    ensureRadioPlayback({ start: true, forceNext: true });
+  });
+  bindRadioUnlockOnFirstInteraction();
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onAppBackground();
@@ -1258,12 +1292,14 @@ function init() {
   ensureStorageVersion(2);
   migrateLegacyStorageKeys();
   playerCar.src = selectedVehicleSrc();
-  if (radioSelect) radioSelect.value = String(getSavedRadioTrackIndex());
+  if (radioSelect) radioSelect.value = getSavedRadioStation();
   state.playerLanePosition = state.lane;
   placePlayer(false);
   if (!isFeatureEnabled("tutorialEnabled")) state.tutorialSeen = true;
   bindControls();
-  ensureRadioPlayback({ start: false });
+  ensureRadioPlayback({ start: true }).then((started) => {
+    if (!started) bindRadioUnlockOnFirstInteraction();
+  });
 
   for (let i = 0; i < 3; i += 1) {
     createEnemy(true);

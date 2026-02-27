@@ -260,6 +260,9 @@ document.getElementById("startRaceBtn").addEventListener("click", async () => {
   saveSelectedVehicle();
   const selected = selectedVehicle();
   const qualityImage = selected.variants[currentQuality] || selected.variants.hd;
+  const selectedStation = localStorage.getItem("ct_radio_station_v1") || "radio_random";
+  const stationPreviewTrack = `/Assets/Sounds/Onroad/radio/${selectedStation}/Sound_music_onroad_playsong1_sample_v01.mp3`;
+
   navigateWithPreload("play.html", [
     qualityImage,
     "./Assets/Road/Road_street_baseloop_v01.png",
@@ -267,7 +270,7 @@ document.getElementById("startRaceBtn").addEventListener("click", async () => {
     "/Assets/Road/Obstacles/Obstacles_decor_base_v01.svg",
     "./Assets/Road/obstacles/Obstacles_decor_base_v01.svg",
     "./Assets/Road/Obstacles/Obstacles_decor_base_v01.svg",
-    "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong1_sample_v01.mp3",
+    stationPreviewTrack,
   ]);
 });
 

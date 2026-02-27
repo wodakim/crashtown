@@ -1,5 +1,6 @@
 import { initPagePerf, markNavigationStart, reportNavigationArrival, runExitTransition } from "./perf-tools.js";
 import { navigateWithPreload as sharedNavigateWithPreload, preloadAsset } from "./src/core/navigation.js";
+import { RADIO_STATION_PREF_KEY, RADIO_STATIONS, isKnownStation } from "./src/data/radioStations.js";
 const overlay = document.getElementById("overlay");
 const popups = {
   settingsPopup: document.getElementById("settingsPopup"),
@@ -27,6 +28,7 @@ const music = document.getElementById("mainMenuMusic");
 let introAudioUnlocked = false;
 const volumeSlider = document.getElementById("volumeSlider");
 const qualityButtons = Array.from(document.querySelectorAll(".toggle"));
+const radioStationSelect = document.getElementById("radioStationSelect");
 
 const cars = {
   hd: [
@@ -144,12 +146,36 @@ function renderMenuBroadcast() {
   menuMessageBox.textContent = configured || MENU_BROADCAST_TEXT;
 }
 
+function formatWalletPopupValue(value) {
+  if (!Number.isFinite(value)) return "0";
+  if (value >= 9999) return "9,999+";
+  return Math.max(0, Math.floor(value)).toLocaleString("fr-FR");
+}
+
+
+function getSelectedRadioStation() {
+  const saved = localStorage.getItem(RADIO_STATION_PREF_KEY) || "radio_random";
+  return isKnownStation(saved) ? saved : "radio_random";
+}
+
+function saveSelectedRadioStation(stationId) {
+  const safe = isKnownStation(stationId) ? stationId : "radio_random";
+  localStorage.setItem(RADIO_STATION_PREF_KEY, safe);
+  return safe;
+}
+
+function syncRadioStationControl() {
+  if (!radioStationSelect) return;
+  const value = getSelectedRadioStation();
+  radioStationSelect.value = value;
+}
+
 function renderWallet() {
   const credits = getWalletCredits();
   const emeralds = getWalletEmeralds();
   if (walletAmount) walletAmount.textContent = `Crédits: ${credits}`;
-  if (walletCreditsValue) walletCreditsValue.textContent = `${credits.toLocaleString("fr-FR")}`;
-  if (walletEmeraldValue) walletEmeraldValue.textContent = `${emeralds.toLocaleString("fr-FR")}`;
+  if (walletCreditsValue) walletCreditsValue.textContent = formatWalletPopupValue(credits);
+  if (walletEmeraldValue) walletEmeraldValue.textContent = formatWalletPopupValue(emeralds);
 }
 
 function saveProfileFromForm() {
@@ -679,6 +705,13 @@ qualityButtons.forEach((button) => {
   });
 });
 
+
+radioStationSelect?.addEventListener("change", () => {
+  const safe = saveSelectedRadioStation(radioStationSelect.value);
+  radioStationSelect.value = safe;
+  const selectedLabel = RADIO_STATIONS.find((station) => station.id === safe)?.label || "Random Mix";
+  showFxNotice(`Radio en jeu: ${selectedLabel}`);
+});
 document.getElementById("prevCar").addEventListener("click", () => {
   const list = cars[selectedQuality];
   carIndex = (carIndex - 1 + list.length) % list.length;
@@ -701,6 +734,7 @@ initMenuScene();
 renderCar();
 renderProfile();
 renderWallet();
+syncRadioStationControl();
 renderMenuBroadcast();
 runBootSequence();
 

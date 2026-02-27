@@ -276,6 +276,15 @@ body {
   width: 140px;
 }
 
+
+.popup select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #aab5c2;
+  padding: 8px;
+  background: #0f1620;
+  color: #fff;
+}
 .confirm-base {
   width: 100%;
 }
@@ -488,3 +497,35 @@ body {
   background: linear-gradient(180deg, #ff9a1a 0%, #d65100 100%);
   border: 2px solid #2a1900;
 }
+
+/* Priority pass — in-game button animations */
+.circle-btn,
+.asset-btn,
+.close-btn {
+  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 120ms ease;
+  transform-origin: center center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .circle-btn:hover,
+  .asset-btn:hover,
+  .close-btn:hover {
+    transform: translateY(-1px) scale(1.02);
+    filter: brightness(1.06);
+  }
+}
+
+.circle-btn:active,
+.asset-btn:active,
+.close-btn:active {
+  transform: translateY(1px) scale(0.96);
+  filter: brightness(0.94);
+}
+
+.circle-btn:focus-visible,
+.asset-btn:focus-visible,
+.close-btn:focus-visible {
+  outline: 2px solid #ffe36a;
+  outline-offset: 2px;
+}
+

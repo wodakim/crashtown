@@ -35,3 +35,25 @@
 - [ ] Wallet popup conforme au mockup de structure (positionnement des modules/actions).
 - [ ] Popup quêtes journalières compréhensible et visuellement cohérent.
 - [ ] Aucun bug P0/P1 introduit sur navigation menu.
+
+
+## 4) Itération 2 — alignement mockup + correctif audio play
+
+- [x] Ajustement du layout du wallet popup (taille, marges modules, lisibilité des valeurs, position des actions) pour se rapprocher du mockup.
+- [x] Correctif audio Play: piste `OnRoad 4` corrigée (`.mp3`), suppression du faux chemin `.mp3.mp3`.
+- [x] Correctif persistance radio Play: la piste choisie est relue au chargement et rejouée automatiquement dès que l’autoplay est autorisé, avec fallback sur première interaction utilisateur.
+- [ ] Validation physique Android (à faire): vérifier le démarrage de la piste sélectionnée au lancement de run, puis après fermeture/réouverture de l’app.
+
+
+## 5) Prochaines choses à faire (priorité)
+
+- [ ] Déployer les animations de boutons sur tout le jeu (menu, garage, play, popups) avec states unifiés.
+- [ ] Lancer la passe des vraies animations runtime en mode jeu (near-miss, takedown, crash, combo, pickup).
+- [ ] Vérifier budget perf mobile pendant animations (pas de drop visible sur Android mid-tier).
+
+
+## 6) Itération 3 — animations priorisées
+
+- [x] Première passe animations boutons globales déployée (menu, garage, play, popups).
+- [ ] Tuning final des courbes/offsets d'animation sur device Android réel.
+- [ ] Démarrage de la passe "vraies animations gameplay" (near-miss, takedown, crash, combo, pickup).
