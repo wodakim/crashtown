@@ -190,6 +190,7 @@ const state = {
   radioHistory: [],
   radioHistoryIndex: -1,
   radioLoopCurrent: false,
+  radioEmptyWarnedStation: null,
 };
 
 const feedbackLayer = document.createElement("div");
@@ -262,6 +263,7 @@ async function loadStationTracks(stationId) {
       ? payload.tracks.map((name) => normalizeTrackPath(stationId, String(name))).filter(Boolean)
       : [];
     if (tracks.length > 0) return tracks;
+    console.warn(`[CT RADIO] playlist vide pour ${stationId} (playlist.json)`);
   } catch {
     // fallback below
   }
@@ -306,6 +308,10 @@ async function prepareRadioStation(stationId, { forceReload = false } = {}) {
   state.currentRadioStation = stationId;
   state.radioTracks = await loadStationTracks(stationId);
   refillRadioQueue();
+  if (!state.radioTracks.length && state.radioEmptyWarnedStation !== stationId) {
+    state.radioEmptyWarnedStation = stationId;
+    addFloatingFeedback("RADIO: playlist vide", "neutral");
+  }
   state.radioHistory = [];
   state.radioHistoryIndex = -1;
   state.currentRadioTrack = null;

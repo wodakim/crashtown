@@ -21,7 +21,6 @@ async function main() {
     const tracks = await listMp3Files(stationDir);
     const payload = {
       station: station.name,
-      generatedAt: new Date().toISOString(),
       tracks,
     };
     await fs.writeFile(path.join(stationDir, 'playlist.json'), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
