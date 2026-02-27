@@ -133,8 +133,10 @@ const radioTracks = [
   "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong1_sample_v01.mp3",
   "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong2_sample_v01.mp3",
   "./Assets/Sounds/Onroad/radio/Sound_music_onroad_playsong3_loopX3_sample_v01.mp3",
-  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_song_fellas_sample_v01.mp3.mp3",
+  "./Assets/Sounds/Onroad/radio/Sound_music_onroad_song_fellas_sample_v01.mp3",
 ];
+
+let radioUnlockBound = false;
 
 const state = {
   running: true,
@@ -1056,7 +1058,7 @@ function mainLoop(now) {
 }
 
 
-function ensureRadioPlayback({ start = true } = {}) {
+async function ensureRadioPlayback({ start = true } = {}) {
   if (!radioPlayer) return;
   const pick = Number(radioSelect?.value ?? getSavedRadioTrackIndex());
   saveRadioTrackIndex(pick);
@@ -1067,9 +1069,28 @@ function ensureRadioPlayback({ start = true } = {}) {
   }
   radioPlayer.loop = true;
   radioPlayer.volume = 0.62;
-  if (!start) return;
-  if (sameTrack && !radioPlayer.paused) return;
-  radioPlayer.play().catch(() => {});
+  if (!start) return false;
+  if (sameTrack && !radioPlayer.paused) return true;
+  return safePlay(radioPlayer);
+}
+
+function bindRadioUnlockOnFirstInteraction() {
+  if (radioUnlockBound) return;
+  radioUnlockBound = true;
+
+  const unlock = async () => {
+    const started = await ensureRadioPlayback({ start: true });
+    dismissTutorialOverlay();
+    if (!started) return;
+    radioUnlockBound = false;
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("touchstart", unlock);
+  };
+
+  window.addEventListener("pointerdown", unlock, { passive: true });
+  window.addEventListener("keydown", unlock);
+  window.addEventListener("touchstart", unlock, { passive: true });
 }
 
 
@@ -1238,14 +1259,7 @@ function bindControls() {
     saveRadioTrackIndex(Number(radioSelect.value));
     ensureRadioPlayback();
   });
-  const onFirstInteraction = () => {
-    ensureRadioPlayback({ start: true });
-    dismissTutorialOverlay();
-    window.removeEventListener("pointerdown", onFirstInteraction);
-    window.removeEventListener("keydown", onFirstInteraction);
-  };
-  window.addEventListener("pointerdown", onFirstInteraction, { once: true });
-  window.addEventListener("keydown", onFirstInteraction, { once: true });
+  bindRadioUnlockOnFirstInteraction();
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onAppBackground();
@@ -1263,7 +1277,9 @@ function init() {
   placePlayer(false);
   if (!isFeatureEnabled("tutorialEnabled")) state.tutorialSeen = true;
   bindControls();
-  ensureRadioPlayback({ start: false });
+  ensureRadioPlayback({ start: true }).then((started) => {
+    if (!started) bindRadioUnlockOnFirstInteraction();
+  });
 
   for (let i = 0; i < 3; i += 1) {
     createEnemy(true);
