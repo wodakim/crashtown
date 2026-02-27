@@ -213,6 +213,15 @@ function showFxNotice(text) {
   window.setTimeout(() => banner.remove(), 1200);
 }
 
+function pulseShopCard(stateClass) {
+  const card = document.querySelector(".shop-card");
+  if (!card) return;
+  card.classList.remove("shop-card-success", "shop-card-warn");
+  if (!stateClass) return;
+  void card.offsetWidth;
+  card.classList.add(stateClass);
+}
+
 
 function currentVehicleId() {
   return VEHICLE_CATALOG[carIndex]?.id || VEHICLE_CATALOG[0]?.id || "RX7";
@@ -224,13 +233,16 @@ function refreshShopActionButton(card) {
   const colorOwned = isVehicleColorOwned(card.id, card.color?.token || "white");
   if (!carOwned) {
     equipFromShopBtn.textContent = `Acheter la voiture (${card.carPriceCredits.toLocaleString("fr-FR")} crédits)`;
+    equipFromShopBtn.dataset.actionState = "buy-car";
     return;
   }
   if (!colorOwned) {
     equipFromShopBtn.textContent = `Acheter couleur (${card.colorPriceCredits.toLocaleString("fr-FR")} crédits)`;
+    equipFromShopBtn.dataset.actionState = "buy-color";
     return;
   }
   equipFromShopBtn.textContent = "Équiper pour la course";
+  equipFromShopBtn.dataset.actionState = "equip";
 }
 
 function equipCurrentFromShop() {
@@ -244,12 +256,14 @@ function equipCurrentFromShop() {
   if (!carOwned) {
     if (credits < card.carPriceCredits) {
       showFxNotice("Crédits insuffisants pour cette voiture");
+      pulseShopCard("shop-card-warn");
       return;
     }
     localStorage.setItem(PLAYER_WALLET_KEY, String(credits - card.carPriceCredits));
     unlockVehicle(vehicleId);
     renderWallet();
     showFxNotice(`${vehicleId} débloquée`);
+    pulseShopCard("shop-card-success");
     renderCar();
     return;
   }
@@ -257,12 +271,14 @@ function equipCurrentFromShop() {
   if (!colorOwned) {
     if (credits < card.colorPriceCredits) {
       showFxNotice("Crédits insuffisants pour cette couleur");
+      pulseShopCard("shop-card-warn");
       return;
     }
     localStorage.setItem(PLAYER_WALLET_KEY, String(credits - card.colorPriceCredits));
     unlockVehicleColor(vehicleId, colorToken);
     renderWallet();
     showFxNotice(`Couleur ${card.color?.label || colorToken} débloquée`);
+    pulseShopCard("shop-card-success");
     renderCar();
     return;
   }
@@ -271,6 +287,7 @@ function equipCurrentFromShop() {
   localStorage.setItem("selectedVehicleQuality", selectedQuality);
   localStorage.setItem("selectedVehicleColor", colorToken);
   showFxNotice(`${vehicleId} équipé (${selectedQuality.toUpperCase()} · ${card.color?.label || "Blanc"})`);
+  pulseShopCard("shop-card-success");
 }
 
 function openPopup(popupId) {
@@ -301,6 +318,7 @@ function renderCar() {
 
   carImage.src = card.image;
   carImage.alt = `${card.name} ${card.quality.toUpperCase()} ${card.color?.label || "Blanc"}`;
+  carImage.classList.toggle("shop-car-locked", !carOwned);
   carName.textContent = `${card.name} · Couleur: ${card.color?.label || "Blanc"} · ${carOwned ? "Voiture débloquée" : "Voiture verrouillée"}`;
   if (shopVariantLabel) shopVariantLabel.textContent = selectedQuality.toUpperCase();
   if (shopCarPrice) shopCarPrice.textContent = `${card.carPriceCredits.toLocaleString("fr-FR")} crédits`;

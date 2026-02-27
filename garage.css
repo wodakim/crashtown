@@ -131,6 +131,7 @@ body {
   font-weight: 700;
   letter-spacing: 1px;
   border-radius: 8px;
+  animation: garageLockPulse 1.4s ease-in-out infinite;
 }
 
 .color-btn.locked,
@@ -388,3 +389,9 @@ body {
   outline-offset: 2px;
 }
 
+
+
+@keyframes garageLockPulse {
+  0%, 100% { background: rgba(0, 0, 0, 0.55); }
+  50% { background: rgba(0, 0, 0, 0.72); }
+}
