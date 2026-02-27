@@ -495,6 +495,35 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
+
+.shop-card {
+  border: 1px solid #6c737d;
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  display: grid;
+  gap: 6px;
+}
+
+.shop-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #ffd255;
+}
+
+.shop-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+
+.shop-card-row.total {
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.3);
+  font-weight: 700;
+}
+
 .action-btn {
   border: 2px solid #f0d53f;
   border-radius: 10px;

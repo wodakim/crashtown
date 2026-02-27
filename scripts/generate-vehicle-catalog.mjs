@@ -8,10 +8,18 @@ const QUALITY_DIRS = [
 ];
 const OUT_FILE = path.resolve('src/data/vehicles.generated.js');
 
-function parseVehicleId(filename) {
-  const match = filename.match(/^Vehicles_(.+?)_[^/]+\.png$/i);
+function parseVehicleParts(filename) {
+  // Naming convention:
+  // - Vehicles_<CARID>_<...>.png (legacy/base)
+  // - Vehicles_<CARID>_<COLOR>_<...>.png (recommended for color scan)
+  const match = filename.match(/^Vehicles_([^_]+)_([^/]+)\.png$/i);
   if (!match) return null;
-  return String(match[1]).toUpperCase();
+  const carId = String(match[1]).toUpperCase();
+  const suffix = String(match[2]);
+  const token = suffix.split("_")[0]?.toLowerCase() || "base";
+  const reserved = new Set(["hd", "pixel", "base"]);
+  const color = reserved.has(token) ? "base" : token;
+  return { carId, color };
 }
 
 async function listPngs(dir) {
@@ -29,11 +37,14 @@ async function main() {
     const dir = path.join(ROOT, qualityDir);
     const files = await listPngs(dir);
     for (const file of files) {
-      const id = parseVehicleId(file);
-      if (!id) continue;
-      const next = variantsByVehicle.get(id) || {};
-      next[qualityKey] = `/Assets/Vehicles/Player/${qualityDir}/${file}`;
-      variantsByVehicle.set(id, next);
+      const parsed = parseVehicleParts(file);
+      if (!parsed) continue;
+      const { carId, color } = parsed;
+      const next = variantsByVehicle.get(carId) || {};
+      const qualityMap = next[qualityKey] || {};
+      qualityMap[color] = `/Assets/Vehicles/Player/${qualityDir}/${file}`;
+      next[qualityKey] = qualityMap;
+      variantsByVehicle.set(carId, next);
     }
   }
 
