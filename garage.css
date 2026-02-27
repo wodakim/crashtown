@@ -46,7 +46,7 @@ body {
   position: relative;
   z-index: 2;
   width: 71%;
-  margin: calc(10% + var(--safe-top)) auto 0;
+  margin: calc(var(--safe-top)) auto 0;
   border: 3px solid #12151a;
   border-radius: 16px;
   background: rgba(188, 194, 201, 0.94);
@@ -312,3 +312,47 @@ body {
 .nav-loading.ct-nav-loading-show {
   opacity: 1;
 }
+
+/* Priority pass — garage button animations */
+.play-btn,
+.icon-btn,
+.close-btn,
+.car-carousel button,
+.variant-switch button,
+.color-btn {
+  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 120ms ease;
+  transform-origin: center center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .play-btn:hover,
+  .icon-btn:hover,
+  .close-btn:hover,
+  .car-carousel button:hover,
+  .variant-switch button:hover,
+  .color-btn:hover {
+    transform: translateY(-1px) scale(1.02);
+    filter: brightness(1.05);
+  }
+}
+
+.play-btn:active,
+.icon-btn:active,
+.close-btn:active,
+.car-carousel button:active,
+.variant-switch button:active,
+.color-btn:active {
+  transform: translateY(1px) scale(0.96);
+  filter: brightness(0.94);
+}
+
+.play-btn:focus-visible,
+.icon-btn:focus-visible,
+.close-btn:focus-visible,
+.car-carousel button:focus-visible,
+.variant-switch button:focus-visible,
+.color-btn:focus-visible {
+  outline: 2px solid #ffe36a;
+  outline-offset: 2px;
+}
+
