@@ -1,63 +1,6 @@
 import { initPagePerf, markNavigationStart, reportNavigationArrival, runExitTransition } from "./perf-tools.js";
 import { navigateWithPreload as sharedNavigateWithPreload, preloadAsset } from "./src/core/navigation.js";
-const vehicles = [
-  {
-    id: "PORSHE",
-    name: "PORSHE",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_porshe_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_porshe_pixel_base_v01.png",
-    },
-    sound: "./Assets/Sounds/Garage/Car/Sound_effect_car_porsche_sample_v01.mp3",
-  },
-  {
-    id: "BMW",
-    name: "BMW",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_bmw_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_bmw_pixel_base_v01.png",
-    },
-    sound: "./Assets/Sounds/Garage/Car/Sound_effect_car_bmw_sample_v01.mp3",
-  },
-  {
-    id: "GALLARDO",
-    name: "GALLARDO",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_gallardo_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_gallardo_pixel_base_v01.png",
-    },
-    sound: "./Assets/Sounds/Garage/Car/Sound_effect_car_gallardo_sample_v01.mp3",
-  },
-  {
-    id: "RX7",
-    name: "RX7",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_rx7_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_rx7_pixel_base_v01.png",
-    },
-    sound: "",
-  },
-  {
-    id: "CHIRON",
-    name: "CHIRON",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_chiron_HD_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_chiron_pixel_base_v01.png",
-    },
-    sound: "",
-  },
-  {
-    id: "CAMARO",
-    name: "CAMARO",
-    variants: {
-      hd: "./Assets/Vehicles/Player/HD/Vehicles_camaro_pixel_base_v01.png",
-      pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_camaro_pixel_base_v01.png",
-    },
-    sound: "",
-  },
-];
-
-const qualityOrder = ["hd", "pixel"];
+import { VEHICLE_CATALOG as vehicles, VEHICLE_QUALITY_ORDER as qualityOrder } from "./src/data/vehicles.js";
 let currentQuality = localStorage.getItem("selectedVehicleQuality") || "hd";
 let currentIndex = 0;
 

@@ -4,6 +4,7 @@ import { ensureStorageVersion, readNumber, writeNumber } from "./src/core/storag
 import { trackEvent } from "./src/core/telemetry.js";
 import { gameplayConfig } from "./src/data/gameplay.js";
 import { RADIO_STATION_PREF_KEY, buildStationTracks, isKnownStation } from "./src/data/radioStations.js";
+import { VEHICLE_CATALOG } from "./src/data/vehicles.js";
 import { safePlay, stopAndReset } from "./src/core/audio.js";
 const lanes = gameplayConfig.lanes;
 const ENEMY_SPAWN_INTERVAL_MS = gameplayConfig.enemySpawnIntervalMs;
@@ -87,32 +88,10 @@ const prevTrackBtn = document.getElementById("prevTrackBtn");
 const loopTrackBtn = document.getElementById("loopTrackBtn");
 const nextTrackBtn = document.getElementById("nextTrackBtn");
 
-const vehicleAssets = {
-  PORSHE: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_porshe_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_porshe_pixel_base_v01.png",
-  },
-  BMW: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_bmw_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_bmw_pixel_base_v01.png",
-  },
-  GALLARDO: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_gallardo_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_gallardo_pixel_base_v01.png",
-  },
-  RX7: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_rx7_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_rx7_pixel_base_v01.png",
-  },
-  CHIRON: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_chiron_HD_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_chiron_pixel_base_v01.png",
-  },
-  CAMARO: {
-    hd: "./Assets/Vehicles/Player/HD/Vehicles_camaro_pixel_base_v01.png",
-    pixel: "./Assets/Vehicles/Player/Pixel/Vehicles_camaro_pixel_base_v01.png",
-  },
-};
+const vehicleAssets = VEHICLE_CATALOG.reduce((acc, vehicle) => {
+  acc[vehicle.id] = { ...vehicle.variants };
+  return acc;
+}, {});
 
 
 const botVehicleAssets = {

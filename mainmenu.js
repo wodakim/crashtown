@@ -1,6 +1,7 @@
 import { initPagePerf, markNavigationStart, reportNavigationArrival, runExitTransition } from "./perf-tools.js";
 import { navigateWithPreload as sharedNavigateWithPreload, preloadAsset } from "./src/core/navigation.js";
 import { RADIO_STATION_PREF_KEY, RADIO_STATIONS, isKnownStation } from "./src/data/radioStations.js";
+import { listVehiclesForQuality } from "./src/data/vehicles.js";
 const overlay = document.getElementById("overlay");
 const popups = {
   settingsPopup: document.getElementById("settingsPopup"),
@@ -31,22 +32,8 @@ const qualityButtons = Array.from(document.querySelectorAll(".toggle"));
 const radioStationSelect = document.getElementById("radioStationSelect");
 
 const cars = {
-  hd: [
-    ["PORSHE HD", "/Assets/Vehicles/Player/HD/Vehicles_porshe_HD_base_v01.png"],
-    ["BMW HD", "/Assets/Vehicles/Player/HD/Vehicles_bmw_HD_base_v01.png"],
-    ["GALLARDO HD", "/Assets/Vehicles/Player/HD/Vehicles_gallardo_HD_base_v01.png"],
-    ["RX7 HD", "/Assets/Vehicles/Player/HD/Vehicles_rx7_HD_base_v01.png"],
-    ["CHIRON HD", "/Assets/Vehicles/Player/HD/Vehicles_chiron_HD_base_v01.png"],
-    ["CAMARO HD", "/Assets/Vehicles/Player/HD/Vehicles_camaro_pixel_base_v01.png"],
-  ],
-  pixel: [
-    ["PORSHE PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_porshe_pixel_base_v01.png"],
-    ["BMW PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_bmw_pixel_base_v01.png"],
-    ["GALLARDO PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_gallardo_pixel_base_v01.png"],
-    ["RX7 PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_rx7_pixel_base_v01.png"],
-    ["CHIRON PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_chiron_pixel_base_v01.png"],
-    ["CAMARO PIXEL", "/Assets/Vehicles/Player/Pixel/Vehicles_camaro_pixel_base_v01.png"],
-  ],
+  hd: listVehiclesForQuality("hd"),
+  pixel: listVehiclesForQuality("pixel"),
 };
 
 const INTRO_VIDEO_SRC = "/Assets/Video/Intro.mp4";
