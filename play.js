@@ -45,6 +45,7 @@ const RUN_EVENT_DENSE_TRAFFIC_SPAWN_MULT = gameplayConfig.runEvents.denseTraffic
 const RUN_EVENT_DENSE_TRAFFIC_MAX_BONUS = gameplayConfig.runEvents.denseTrafficMaxEnemiesBonus;
 const RUN_EVENT_NIGHT_CRUISE_MULT = gameplayConfig.runEvents.nightCruiseMultiplier;
 const RUN_EVENT_NIGHT_SPEED_CAP = gameplayConfig.runEvents.nightSpeedCap;
+const RADIO_REPEAT_PREF_KEY = "ct_radio_repeat_v1";
 const OBSTACLE_ASSET_CANDIDATES = [
   "/Assets/Road/obstacles/Obstacles_decor_base_v01.svg",
   "/Assets/Road/Obstacles/Obstacles_decor_base_v01.svg",
@@ -238,6 +239,15 @@ function saveRadioStation(stationId) {
   const safe = isKnownStation(stationId) ? stationId : "radio_random";
   localStorage.setItem(RADIO_STATION_PREF_KEY, safe);
   return safe;
+}
+
+
+function getSavedRadioRepeat() {
+  return localStorage.getItem(RADIO_REPEAT_PREF_KEY) === "1";
+}
+
+function saveRadioRepeat(enabled) {
+  localStorage.setItem(RADIO_REPEAT_PREF_KEY, enabled ? "1" : "0");
 }
 
 function shuffleTracks(list) {
@@ -1147,7 +1157,7 @@ async function ensureRadioPlayback({ start = true, forceNext = false, usePreviou
   const stationId = saveRadioStation(stationFromUi);
   if (radioSelect && radioSelect.value !== stationId) radioSelect.value = stationId;
 
-  await prepareRadioStation(stationId, { forceReload: forceNext && stationId === state.currentRadioStation });
+  await prepareRadioStation(stationId, { forceReload: false });
 
   let targetTrack = null;
 
@@ -1283,6 +1293,62 @@ function setupTapSwipeControls() {
   };
 }
 
+
+function clearRunEntities() {
+  state.enemies.forEach((enemy) => enemy.element.remove());
+  state.giftDrops.forEach((gift) => gift.element.remove());
+  state.obstacles.forEach((obs) => obs.element.remove());
+  state.enemies = [];
+  state.giftDrops = [];
+  state.obstacles = [];
+}
+
+function restartRun() {
+  clearRunEntities();
+
+  state.running = true;
+  state.gameOver = false;
+  state.lane = 1;
+  state.playerLanePosition = 1;
+  state.score = 0;
+  state.speed = 280;
+  state.roadOffset = 0;
+  state.keys.left = false;
+  state.keys.right = false;
+  state.keys.accel = false;
+  state.keys.brake = false;
+  state.enemySpawnClock = 0;
+  state.obstacleSpawnClock = 0;
+  state.giftSpawnClock = 0;
+  state.giftSpawnTarget = GIFT_SPAWN_MIN_MS + Math.random() * (GIFT_SPAWN_MAX_MS - GIFT_SPAWN_MIN_MS);
+  state.laneChangeBlockedUntil = 0;
+  state.startedAt = performance.now();
+  state.shieldUntil = 0;
+  state.speedProgressBoost = 0;
+  state.combo = { count: 0, multiplier: 1, expiresAt: 0, lastSource: null };
+  state.runEvent = { type: null, endsAt: 0, nextAt: performance.now() + RUN_EVENT_MIN_INTERVAL_MS };
+  state.currentModal = null;
+
+  breakCombo("retry");
+  setModal(null);
+  overlay.classList.add("hidden");
+  gameOverPanel.classList.add("hidden");
+  pausePopup.classList.add("hidden");
+  settingsPopup.classList.add("hidden");
+  confirmExitPopup.classList.add("hidden");
+
+  placePlayer(false);
+  scoreValue.textContent = String(state.score).padStart(10, "0");
+  speedValue.textContent = String(Math.floor(state.speed)).padStart(4, "0");
+
+  for (let i = 0; i < 3; i += 1) {
+    createEnemy(true);
+  }
+
+  state.lastFrame = performance.now();
+  trackEvent("play_retry", { station: state.currentRadioStation || getSavedRadioStation() });
+}
+
 function bindControls() {
   const onKey = (pressed) => (event) => {
     const key = event.key.toLowerCase();
@@ -1355,7 +1421,7 @@ function bindControls() {
   menuBtnInPause?.addEventListener("click", () => {
     navigateAway("index.html");
   });
-  retryBtn.addEventListener("click", () => window.location.reload());
+  retryBtn.addEventListener("click", () => restartRun());
   menuBtnGameOver.addEventListener("click", () => {
     navigateAway("index.html");
   });
@@ -1376,6 +1442,7 @@ function bindControls() {
 
   loopTrackBtn?.addEventListener("click", () => {
     state.radioLoopCurrent = !state.radioLoopCurrent;
+    saveRadioRepeat(state.radioLoopCurrent);
     updateRadioControlsUi();
   });
 
@@ -1383,7 +1450,6 @@ function bindControls() {
     ensureRadioPlayback({ start: true, forceNext: !state.radioLoopCurrent });
   });
 
-  bindRadioUnlockOnFirstInteraction();
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onAppBackground();
@@ -1397,6 +1463,7 @@ function init() {
   migrateLegacyStorageKeys();
   playerCar.src = selectedVehicleSrc();
   if (radioSelect) radioSelect.value = getSavedRadioStation();
+  state.radioLoopCurrent = getSavedRadioRepeat();
   updateRadioControlsUi();
   state.playerLanePosition = state.lane;
   placePlayer(false);
